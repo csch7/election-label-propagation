@@ -62,7 +62,7 @@ def similarity_matrix(features):
     return S
 
 
-def build_demographic_graph(features=None, method="hybrid", k=None, threshold=None, weighted=True):
+def build_demographic_graph(features=None, method="knn", k=None, threshold=None, weighted=True):
     """Return (geoids, W, S): W is a symmetric adjacency matrix, S the full
     similarity matrix.
 
