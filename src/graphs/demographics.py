@@ -62,32 +62,41 @@ def similarity_matrix(features):
     return S
 
 
-def build_demographic_graph(features=None, method="knn", k=None, threshold=None):
-    """Return (geoids, A, S) with A a symmetric 0/1 adjacency matrix.
+def build_demographic_graph(features=None, method="hybrid", k=None, threshold=None, weighted=True):
+    """Return (geoids, W, S): W is a symmetric adjacency matrix, S the full
+    similarity matrix.
 
+    method="threshold": edge i-j if S[i, j] >= threshold.
     method="knn":       edge i-j if j is in i's top-k most similar OR vice versa.
-    method="threshold": edge i-j if similarity >= threshold.
-    k / threshold default to the values in config/config.yml.
+    method="hybrid":    union of the two, so every county has at least k edges
+                        while very similar counties are all connected.
+    weighted: edge weights are the similarity (otherwise 0/1).
+
+    k defaults to `demographic_graph_k` and threshold to `demographic_similarity`
+    in config/config.yml. (`nearest_neighbors` is for the kNN classifier only.)
     """
+    if method not in ("threshold", "knn", "hybrid"):
+        raise ValueError("method must be 'threshold', 'knn' or 'hybrid'")
     cfg = load_config()
     features = build_features() if features is None else features
     S = similarity_matrix(features)
-    if method == "knn":
-        k = cfg["nearest_neighbors"] if k is None else k
+    A = np.zeros(S.shape, dtype=bool)
+    if method in ("knn", "hybrid"):
+        k = cfg["demographic_graph_k"] if k is None else k
         top = np.argpartition(-S, k, axis=1)[:, :k]
-        A = np.zeros(S.shape, dtype=np.uint8)
-        A[np.arange(len(S))[:, None], top] = 1
-        A = np.maximum(A, A.T)
-    elif method == "threshold":
+        A[np.arange(len(S))[:, None], top] = True
+    if method in ("threshold", "hybrid"):
         threshold = cfg["demographic_similarity"] if threshold is None else threshold
-        A = (S >= threshold).astype(np.uint8)
-    else:
-        raise ValueError("method must be 'knn' or 'threshold'")
-    np.fill_diagonal(A, 0)
-    return features.index.to_numpy(), A, S
+        A |= S >= threshold
+    A |= A.T
+    np.fill_diagonal(A, False)
+    W = np.where(A, np.clip(S, 0, None), 0.0) if weighted else A.astype(np.uint8)
+    return features.index.to_numpy(), W, S
 
 
 if __name__ == "__main__":
-    for m in ("knn", "threshold"):
-        geoids, A, _ = build_demographic_graph(method=m)
-        print(f"{m}: {len(geoids)} nodes, {int(A.sum() // 2)} edges, mean degree {A.sum(1).mean():.2f}")
+    for m in ("threshold", "knn", "hybrid"):
+        geoids, W, _ = build_demographic_graph(method=m)
+        deg = (W > 0).sum(1)
+        print(f"{m}: {len(geoids)} nodes, {int(deg.sum() // 2)} edges, "
+              f"mean degree {deg.mean():.1f}, isolated {(deg == 0).sum()}")

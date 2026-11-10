@@ -1,6 +1,8 @@
 # Configuration file for constant values and data information
 
+# kNN classifier: number of neighbors that vote on a county's result
 nearest_neighbors: 5 # k
 
-demographic_similarity: 0.95 # threshold of demographic similarity to build an edge between
-
+# Demographic graph generation (hybrid: threshold OR top-k, so no county is isolated)
+demographic_similarity: 0.8 # connect counties with similarity >= this
+demographic_graph_k: 5 # also connect each county to its k most similar counties
