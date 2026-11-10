@@ -12,10 +12,10 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from .adjacency import DATA_DIR
+from .graph_io import PREPROCESSED_DIR, RAW_DIR, ROOT, load_graph, save_graph
 
-ROOT = DATA_DIR.parent
-CENSUS_ZIP = DATA_DIR / "Census Data.zip"
+CENSUS_ZIP = RAW_DIR / "Census Data.zip"
+FEATURES_PATH = PREPROCESSED_DIR / "demographic_features.csv"
 
 # Race/ethnicity columns: sum over male + female.
 # NH* = non-Hispanic by race alone (White, Black, Indian, Asian, Pacific), NHTOM = two+ races, H = Hispanic.
@@ -94,9 +94,29 @@ def build_demographic_graph(features=None, method="knn", k=None, threshold=None,
     return features.index.to_numpy(), W, S
 
 
+def graph_path(method="knn"):
+    return PREPROCESSED_DIR / f"demographic_graph_{method}.npz"
+
+
+def get_demographic_graph(method="knn", rebuild=False, **kwargs):
+    """Load the saved demographic graph for `method`, building and saving it
+    first if needed. Returns (geoids, W). Passing k/threshold/weighted via
+    kwargs forces a rebuild (and overwrites the saved file)."""
+    path = graph_path(method)
+    if rebuild or kwargs or not path.exists():
+        geoids, W, _ = build_demographic_graph(method=method, **kwargs)
+        save_graph(path, geoids, W)
+    return load_graph(path)
+
+
 if __name__ == "__main__":
-    for m in ("threshold", "knn", "hybrid"):
-        geoids, W, _ = build_demographic_graph(method=m)
+    features = build_features()
+    FEATURES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    features.to_csv(FEATURES_PATH)
+    print(f"saved features to {FEATURES_PATH}")
+    for m in ("knn", "threshold", "hybrid"):
+        geoids, W, _ = build_demographic_graph(features, method=m)
+        save_graph(graph_path(m), geoids, W)
         deg = (W > 0).sum(1)
         print(f"{m}: {len(geoids)} nodes, {int(deg.sum() // 2)} edges, "
-              f"mean degree {deg.mean():.1f}, isolated {(deg == 0).sum()}")
+              f"mean degree {deg.mean():.1f}, isolated {(deg == 0).sum()} -> {graph_path(m).name}")
