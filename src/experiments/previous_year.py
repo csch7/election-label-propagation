@@ -11,13 +11,16 @@ result, which a real forecaster would have for every county) and, for the
 same seeds, the usual setup with the seeds' true 2024 labels.
 """
 import numpy as np
+import pandas as pd
 
 from ..evaluation.labels import build_labels
 from ..evaluation.metrics import report
-from ..evaluation.splits import eligible_counties, load_split, node_arrays, stratified_split
+from ..evaluation.splits import (add_validation, block_split, eligible_counties, node_arrays,
+                                 stratified_split, load_split)
 from ..evaluation.tuning import evaluate, tune
 from ..graphs.adjacency import get_adjacency_graph
 from ..graphs.demographics import get_demographic_graph
+from ..graphs.graph_io import PREPROCESSED_DIR
 from ..models.knn import KNNClassifier
 from ..models.label_propagation import LabelPropagation
 
@@ -38,9 +41,19 @@ def pick_seeds(train_mask, geoids, df, seed_frac, seed=0):
     return np.array([g in chosen for g in geoids]) & train_mask
 
 
-def run(split_name="stratified", fracs=(0.05, 0.1, 0.25, 0.5, 1.0), prev_year=2020, year=2024):
-    split = load_split(split_name)
-    df = eligible_counties()
+STRATEGIES = {"stratified": stratified_split, "block": block_split}
+
+
+def run(split_name="stratified", fracs=(0.05, 0.1, 0.25, 0.5, 1.0), prev_year=2020, year=2024, seed=None, df=None):
+    """One run. seed=None uses the saved split file; otherwise a fresh
+    train/val/test split and seed sample are drawn with that random seed.
+    Returns a list of (graph, method, seed fraction, metrics dict)."""
+    df = eligible_counties() if df is None else df
+    if seed is None:
+        split = load_split(split_name)
+    else:
+        fn = STRATEGIES[split_name]
+        split = add_validation(fn(df, seed=seed), df, fn, seed=seed)
     y_prev_all, y_now_all = build_labels(prev_year), build_labels(year)
     rows = []
     for gname, (geoids, W) in (("border", get_adjacency_graph()), ("demographic", get_demographic_graph())):
@@ -50,7 +63,7 @@ def run(split_name="stratified", fracs=(0.05, 0.1, 0.25, 0.5, 1.0), prev_year=20
         ti = np.flatnonzero(test & ~np.isnan(y_prev))
         rows.append((gname, "persistence", "-", report(y_now[ti].astype(int), y_prev[ti].astype(int))))
         for frac in fracs:
-            seeds = pick_seeds(train & ~np.isnan(y_prev), geoids, df, frac)
+            seeds = pick_seeds(train & ~np.isnan(y_prev), geoids, df, frac, seed=seed or 0)
             none = np.zeros_like(seeds)
             for mname, (cls, grid) in GRIDS.items():
                 for source, y_fit in (("prev-year seeds", y_prev), ("current-year seeds", y_now)):
@@ -60,8 +73,29 @@ def run(split_name="stratified", fracs=(0.05, 0.1, 0.25, 0.5, 1.0), prev_year=20
     return rows
 
 
+def run_repeated(split_name="stratified", seeds=range(5), **kwargs):
+    """Repeat run() over several random seeds. Returns a DataFrame with the mean
+    and standard deviation across seeds of each metric, per graph/method/fraction."""
+    df = eligible_counties()
+    recs = []
+    for sd in seeds:
+        for graph, method, frac, r in run(split_name, seed=sd, df=df, **kwargs):
+            recs.append({"seed": sd, "graph": graph, "method": method, "seed_frac": str(frac), **r})
+    runs = pd.DataFrame(recs)
+    runs.to_csv(PREPROCESSED_DIR / f"previous_year_runs_{split_name}.csv", index=False)
+    keys = ["graph", "method", "seed_frac"]
+    metrics = ["accuracy", "balanced_accuracy", "f1_democratic"]
+    agg = runs.groupby(keys, sort=False)[metrics].agg(["mean", "std"])
+    return agg
+
+
 if __name__ == "__main__":
+    import sys
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 5
     for sp in ("stratified", "block"):
-        print(f"\n== {sp} split: test balanced accuracy / accuracy")
-        for g, name, frac, r in run(sp):
-            print(f"{g:11s} {name:28s} seeds {frac!s:5s} bal {r['balanced_accuracy']:.3f} acc {r['accuracy']:.3f}")
+        agg = run_repeated(sp, seeds=range(n))
+        print(f"\n== {sp} split, {n} seeds: test balanced accuracy (mean +- std) / accuracy")
+        for (g, name, frac), r in agg.iterrows():
+            print(f"{g:11s} {name:28s} seeds {frac:5s} "
+                  f"bal {r[('balanced_accuracy', 'mean')]:.3f} +- {r[('balanced_accuracy', 'std')]:.3f}  "
+                  f"acc {r[('accuracy', 'mean')]:.3f}")
