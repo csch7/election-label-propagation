@@ -16,8 +16,7 @@ import pandas as pd
 from ..evaluation.labels import build_labels
 from ..evaluation.metrics import report
 from ..evaluation.results import run_path
-from ..evaluation.splits import (add_validation, block_split, eligible_counties, node_arrays,
-                                 stratified_split, load_split)
+from ..evaluation.splits import eligible_counties, load_split, make_split, node_arrays, stratified_split
 from ..evaluation.tuning import evaluate, tune
 from ..graphs.adjacency import get_adjacency_graph
 from ..graphs.demographics import get_demographic_graph
@@ -41,9 +40,6 @@ def pick_seeds(train_mask, geoids, df, seed_frac, seed=0):
     return np.array([g in chosen for g in geoids]) & train_mask
 
 
-STRATEGIES = {"stratified": stratified_split, "block": block_split}
-
-
 def run(split_name="stratified", fracs=(0.05, 0.1, 0.25, 0.5, 1.0), prev_year=2020, year=2024, seed=None, df=None):
     """One run. seed=None uses the saved split file; otherwise a fresh
     train/val/test split and seed sample are drawn with that random seed.
@@ -52,8 +48,7 @@ def run(split_name="stratified", fracs=(0.05, 0.1, 0.25, 0.5, 1.0), prev_year=20
     if seed is None:
         split = load_split(split_name)
     else:
-        fn = STRATEGIES[split_name]
-        split = add_validation(fn(df, seed=seed), df, fn, seed=seed)
+        split = make_split(split_name, df, seed)
     y_prev_all, y_now_all = build_labels(prev_year), build_labels(year)
     rows = []
     for gname, (geoids, W) in (("border", get_adjacency_graph()), ("demographic", get_demographic_graph())):

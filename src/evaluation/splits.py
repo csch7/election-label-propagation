@@ -93,6 +93,12 @@ def block_split(df=None, test_frac=0.2, block_size=10, seed=0):
     return _as_split(df, sorted(test))
 
 
+def make_split(strategy, df, seed=0, val_frac=0.2):
+    """Fresh train/val/test split for a named strategy ('stratified' or 'block')."""
+    fn = {"stratified": stratified_split, "block": block_split}[strategy]
+    return add_validation(fn(df, seed=seed), df, fn, val_frac=val_frac, seed=seed)
+
+
 def _as_split(df, test_ids):
     split = pd.Series("train", index=df.index, name="split")
     split.loc[list(test_ids)] = "test"
