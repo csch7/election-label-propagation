@@ -98,6 +98,17 @@ def _as_split(df, test_ids):
     return split
 
 
+def node_arrays(geoids, split, labels=None):
+    """Align labels and a split to a graph's node order. Returns (y, train_mask,
+    test_mask): y is float with nan for counties without a label, the masks are
+    boolean arrays over the graph's nodes (counties outside the split are in neither)."""
+    labels = build_labels() if labels is None else labels
+    geoids = np.asarray(geoids)
+    y = labels.reindex(geoids).to_numpy(float)
+    s = split.reindex(geoids)
+    return y, (s == "train").to_numpy(), (s == "test").to_numpy()
+
+
 def save_split(split, name):
     path = PREPROCESSED_DIR / f"split_{name}.csv"
     split.rename_axis("GEOID").reset_index().to_csv(path, index=False)
