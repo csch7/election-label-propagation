@@ -94,6 +94,17 @@ def build_demographic_graph(features=None, method="knn", k=None, threshold=None,
     return features.index.to_numpy(), W, S
 
 
+def get_similarity_matrix():
+    """Full (n, n) cosine similarity between every pair of counties (diagonal 0),
+    from the cached feature table. Returns (geoids, S). Used by the "full" kNN
+    baseline, which is not restricted to the edges of the demographic graph."""
+    if FEATURES_PATH.exists():
+        features = pd.read_csv(FEATURES_PATH, dtype={"GEOID": str}).set_index("GEOID")
+    else:
+        features = build_features()
+    return features.index.to_numpy(), similarity_matrix(features).astype(np.float32)
+
+
 def graph_path(method="knn"):
     return PREPROCESSED_DIR / f"demographic_graph_{method}.npz"
 

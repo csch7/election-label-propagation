@@ -35,6 +35,22 @@ def build_adjacency_graph(counties=None, border_path=RAW_DIR / "Bordering Counti
     return geoids, A
 
 
+def geographic_similarity(geoids, scale_km=100.0):
+    """Dense (n, n) similarity from great-circle distance between county
+    centroids: 1 / (1 + km / scale_km), so nearer counties score higher, all
+    values are positive, and the diagonal is zero. Used by the "full" kNN
+    baseline, which picks the geographically nearest known counties whether
+    or not they share a border."""
+    c = load_counties().loc[geoids]
+    lat, lon = np.radians(c.latitude.to_numpy(float)), np.radians(c.longitude.to_numpy(float))
+    a = (np.sin((lat[:, None] - lat[None, :]) / 2) ** 2
+         + np.cos(lat)[:, None] * np.cos(lat)[None, :] * np.sin((lon[:, None] - lon[None, :]) / 2) ** 2)
+    km = 6371.0 * 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
+    S = (1 / (1 + km / scale_km)).astype(np.float32)
+    np.fill_diagonal(S, 0)
+    return S
+
+
 def get_adjacency_graph(rebuild=False, path=ADJACENCY_PATH):
     """Load the saved border graph, building and saving it first if needed.
     Returns (geoids, A)."""
