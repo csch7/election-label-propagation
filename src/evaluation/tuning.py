@@ -17,13 +17,14 @@ from .metrics import balanced_accuracy, report
 THRESHOLDS = np.round(np.arange(0.05, 0.96, 0.05), 2)
 
 
-def tune(model_cls, W, y, train, val, param_grid, thresholds=THRESHOLDS, metric=balanced_accuracy):
+def tune(model_cls, W, y, train, val, param_grid, thresholds=THRESHOLDS, metric=balanced_accuracy, y_eval=None):
     """Grid-search param_grid (dict name -> list of values) and the decision
     threshold on the validation counties. Returns (best, results): best is a
     dict of params plus 'threshold' and 'score'; results is every combination
-    as a DataFrame sorted best-first."""
+    as a DataFrame sorted best-first. y_eval: labels to score against when they
+    differ from the labels the model is fitted on (default: y)."""
     val_idx = np.flatnonzero(val)
-    y_val = y[val_idx].astype(int)
+    y_val = (y if y_eval is None else y_eval)[val_idx].astype(int)
     rows = []
     for values in itertools.product(*param_grid.values()):
         params = dict(zip(param_grid, values))
@@ -35,9 +36,10 @@ def tune(model_cls, W, y, train, val, param_grid, thresholds=THRESHOLDS, metric=
     return best, results
 
 
-def evaluate(model_cls, best, W, y, train, val, test):
+def evaluate(model_cls, best, W, y, train, val, test, y_eval=None):
     """Refit with train + val labels and report metrics on the test counties."""
     params = {k: v for k, v in best.items() if k not in ("threshold", "score")}
     test_idx = np.flatnonzero(test)
     p = model_cls(**params).fit(W, y, train | val).predict_proba(test_idx)
-    return report(y[test_idx].astype(int), (p > best["threshold"]).astype(int))
+    y_test = (y if y_eval is None else y_eval)[test_idx].astype(int)
+    return report(y_test, (p > best["threshold"]).astype(int))
