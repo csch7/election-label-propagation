@@ -93,6 +93,17 @@ def block_split(df=None, test_frac=0.2, block_size=10, seed=0):
     return _as_split(df, sorted(test))
 
 
+def pick_seeds(train_mask, geoids, df, seed_frac, seed=0):
+    """Random state-stratified sample of seed_frac of the training counties."""
+    if seed_frac >= 1:
+        return train_mask.copy()
+    train_ids = set(np.asarray(geoids)[train_mask])
+    sub = df.loc[[g for g in df.index if g in train_ids]]
+    chosen = stratified_split(sub, test_frac=seed_frac, seed=seed)
+    chosen = set(chosen.index[chosen == "test"])
+    return np.array([g in chosen for g in geoids]) & train_mask
+
+
 def make_split(strategy, df, seed=0, val_frac=0.2):
     """Fresh train/val/test split for a named strategy ('stratified' or 'block')."""
     fn = {"stratified": stratified_split, "block": block_split}[strategy]

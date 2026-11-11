@@ -16,7 +16,7 @@ import pandas as pd
 from ..evaluation.labels import build_labels
 from ..evaluation.metrics import report
 from ..evaluation.results import run_path
-from ..evaluation.splits import eligible_counties, load_split, make_split, node_arrays, stratified_split
+from ..evaluation.splits import eligible_counties, load_split, make_split, node_arrays, pick_seeds
 from ..evaluation.tuning import evaluate, tune
 from ..graphs.adjacency import get_adjacency_graph
 from ..graphs.demographics import get_demographic_graph
@@ -27,17 +27,6 @@ GRIDS = {
     "knn": (KNNClassifier, {"k": [3, 10, None], "weighted": [True, False]}),
     "lp": (LabelPropagation, {"alpha": [0.5, 0.8, 0.95]}),
 }
-
-
-def pick_seeds(train_mask, geoids, df, seed_frac, seed=0):
-    """Random state-stratified sample of seed_frac of the training counties."""
-    if seed_frac >= 1:
-        return train_mask.copy()
-    train_ids = set(np.asarray(geoids)[train_mask])
-    sub = df.loc[[g for g in df.index if g in train_ids]]
-    chosen = stratified_split(sub, test_frac=seed_frac, seed=seed)
-    chosen = set(chosen.index[chosen == "test"])
-    return np.array([g in chosen for g in geoids]) & train_mask
 
 
 def run(split_name="stratified", fracs=(0.05, 0.1, 0.25, 0.5, 1.0), prev_year=2020, year=2024, seed=None, df=None):
