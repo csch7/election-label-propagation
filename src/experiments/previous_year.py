@@ -15,12 +15,12 @@ import pandas as pd
 
 from ..evaluation.labels import build_labels
 from ..evaluation.metrics import report
+from ..evaluation.results import run_path
 from ..evaluation.splits import (add_validation, block_split, eligible_counties, node_arrays,
                                  stratified_split, load_split)
 from ..evaluation.tuning import evaluate, tune
 from ..graphs.adjacency import get_adjacency_graph
 from ..graphs.demographics import get_demographic_graph
-from ..graphs.graph_io import PREPROCESSED_DIR
 from ..models.knn import KNNClassifier
 from ..models.label_propagation import LabelPropagation
 
@@ -82,7 +82,7 @@ def run_repeated(split_name="stratified", seeds=range(5), **kwargs):
         for graph, method, frac, r in run(split_name, seed=sd, df=df, **kwargs):
             recs.append({"seed": sd, "graph": graph, "method": method, "seed_frac": str(frac), **r})
     runs = pd.DataFrame(recs)
-    runs.to_csv(PREPROCESSED_DIR / f"previous_year_runs_{split_name}.csv", index=False)
+    runs.to_csv(run_path("previous_year", split_name), index=False)
     keys = ["graph", "method", "seed_frac"]
     metrics = ["accuracy", "balanced_accuracy", "f1_democratic"]
     agg = runs.groupby(keys, sort=False)[metrics].agg(["mean", "std"])
