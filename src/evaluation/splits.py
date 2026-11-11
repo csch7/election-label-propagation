@@ -79,11 +79,12 @@ def block_split(df=None, test_frac=0.2, block_size=10, seed=0):
             free = sorted(members - chosen)
             seed_c = free[rng.integers(len(free))]
             queue, region = deque([seed_c]), {seed_c}
-            while queue and len(region) < min(block_size, target - len(chosen)):
+            cap = min(block_size, target - len(chosen))
+            while queue and len(region) < cap:
                 c = queue.popleft()
                 nbrs = [geoids[j] for j in np.nonzero(A[pos[c]])[0]]
                 for n in rng.permutation(nbrs):
-                    if n in members and n not in chosen and n not in region and len(region) < block_size:
+                    if n in members and n not in chosen and n not in region and len(region) < cap:
                         region.add(n)
                         queue.append(n)
             chosen |= region
