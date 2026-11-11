@@ -1,6 +1,7 @@
 """Train/test splits over counties.
 
-Both graphs are used transductively: the full graph is always visible to the
+Splits have three parts: train, val (for tuning), test (touched only at the
+end). Both graphs are used transductively: the full graph is always visible to the
 model, and the labels of test counties are hidden. A split is therefore just a
 list of train and test GEOIDs, shared by every model so results are comparable.
 Counties without a label or without census features are never in the split.
@@ -98,15 +99,27 @@ def _as_split(df, test_ids):
     return split
 
 
+def add_validation(split, df, strategy=stratified_split, val_frac=0.2, seed=0):
+    """Carve a validation set out of the training counties with the same
+    strategy used for the test split (so val mimics test). With the defaults,
+    80/20 becomes 64% train / 16% val / 20% test of the eligible counties."""
+    train_df = df.loc[split.index[split == "train"]]
+    held = strategy(train_df, test_frac=val_frac, seed=seed + 1)
+    out = split.copy()
+    out.loc[held.index[held == "test"]] = "val"
+    return out
+
+
 def node_arrays(geoids, split, labels=None):
     """Align labels and a split to a graph's node order. Returns (y, train_mask,
-    test_mask): y is float with nan for counties without a label, the masks are
-    boolean arrays over the graph's nodes (counties outside the split are in neither)."""
+    val_mask, test_mask): y is float with nan for counties without a label, the
+    masks are boolean arrays over the graph's nodes (counties outside the split
+    are in none; val is all False for a split without validation)."""
     labels = build_labels() if labels is None else labels
     geoids = np.asarray(geoids)
     y = labels.reindex(geoids).to_numpy(float)
     s = split.reindex(geoids)
-    return y, (s == "train").to_numpy(), (s == "test").to_numpy()
+    return y, (s == "train").to_numpy(), (s == "val").to_numpy(), (s == "test").to_numpy()
 
 
 def save_split(split, name):
@@ -116,7 +129,7 @@ def save_split(split, name):
 
 
 def load_split(name="stratified"):
-    """Return a Series indexed by GEOID with values 'train' / 'test'."""
+    """Return a Series indexed by GEOID with values 'train' / 'val' / 'test'."""
     return pd.read_csv(PREPROCESSED_DIR / f"split_{name}.csv", dtype={"GEOID": str}).set_index("GEOID")["split"]
 
 
@@ -124,9 +137,9 @@ def diagnostics(split, df=None):
     """Print how well test matches train, and how isolated test counties are."""
     df = eligible_counties() if df is None else df
     d = df.assign(split=split)
-    te, tr = d[d.split == "test"], d[d.split == "train"]
-    print(f"train {len(tr)}, test {len(te)} ({len(te) / len(d):.1%})")
-    print(f"Dem share: train {tr.label.mean():.3f}, test {te.label.mean():.3f}")
+    te, tr, va = d[d.split == "test"], d[d.split == "train"], d[d.split == "val"]
+    print(f"train {len(tr)}, val {len(va)}, test {len(te)} ({len(te) / len(d):.1%})")
+    print(f"Dem share: train {tr.label.mean():.3f}, val {va.label.mean():.3f}, test {te.label.mean():.3f}")
     frac = d.groupby("state").split.apply(lambda s: (s == "test").mean())
     print(f"test fraction by state: min {frac.min():.2f}, max {frac.max():.2f}")
     feats = d.drop(columns=["state", "label", "split"])
@@ -145,6 +158,6 @@ def diagnostics(split, df=None):
 if __name__ == "__main__":
     df = eligible_counties()
     for name, fn in (("stratified", stratified_split), ("block", block_split)):
-        split = fn(df)
+        split = add_validation(fn(df), df, fn)
         print(f"\n== {name} -> {save_split(split, name).name}")
         diagnostics(split, df)
