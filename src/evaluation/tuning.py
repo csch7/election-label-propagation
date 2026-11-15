@@ -51,4 +51,4 @@ def evaluate(model_cls, best, W, y, known, test, y_eval=None):
     test_idx = np.flatnonzero(test)
     p = model_cls(**params).fit(W, y, known).predict_proba(test_idx)
     y_test = (y if y_eval is None else y_eval)[test_idx].astype(int)
-    return report(y_test, (p > best["threshold"]).astype(int))
+    return report(y_test, (p > best["threshold"]).astype(int), p)
