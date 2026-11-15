@@ -3,11 +3,13 @@
     python make_figures.py                 # 3 figures -> results/figures/
     python make_figures.py --only charts   # charts only (no map)
     python make_figures.py --only maps --seed 3
+    python make_figures.py --only maps --train-frac 0.05 max   # maps for other training sizes
 
 Figures (for the split set by report_split in config/config.yml):
   learning_curves.png  balanced accuracy and AUC against the number of known counties
   metrics_heatmap.png  all metrics for every graph and model
   map_errors.png       right and wrong calls on the test counties, for every model and graph
+                       (map_errors_5pct.png etc. for lower training sizes, via --train-frac)
 Charts read the latest results/runs/*_model_comparison.csv. The map refits the
 runs for one seed (default 0); each refit is checked against the saved metrics.
 County boundaries come from the US Atlas (downloaded once, cached in results/);
@@ -28,6 +30,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", choices=["charts", "maps"], help="make only the charts or only the map")
     ap.add_argument("--seed", type=int, default=0, help="seed whose runs the map shows (default 0)")
+    ap.add_argument("--train-frac", nargs="+", default=["max"], metavar="F",
+                    help="training sizes to map, as in the results (e.g. 0.05 0.1 max); default max")
     ap.add_argument("--dots", action="store_true", help="draw counties as dots (no boundary download)")
     args = ap.parse_args()
 
@@ -46,7 +50,10 @@ def main():
         from src.visualization.predictions import Reproducer
 
         canvas = maps.CountyCanvas(None if args.dots else maps.load_atlas())
-        maps.errors_grid(canvas, Reproducer(), comp, OUT / "map_errors.png", split=split, seed=args.seed)
+        repro = Reproducer()
+        for frac in args.train_frac:
+            name = "map_errors.png" if frac == "max" else f"map_errors_{round(float(frac) * 100)}pct.png"
+            maps.errors_grid(canvas, repro, comp, OUT / name, split=split, seed=args.seed, frac=frac)
         print("map done")
     print(f"figures in {OUT}")
 

@@ -151,6 +151,7 @@ Block split. Test balanced accuracy, mean over 10 seeds, by the share of all cou
 | `learning_curves.png` | balanced accuracy and AUC against the share of counties known, for every graph and model |
 | `metrics_heatmap.png` | all six metrics for every graph and model at the full training size |
 | `map_errors.png` | right and wrong calls on the test counties for every model and graph (seed 0) |
+| `map_errors_5pct.png` | the same map with labels known for only 5% of counties (`--train-frac` makes other sizes, e.g. `python make_figures.py --only maps --train-frac 0.05 0.1 max`) |
 
 The map refits the runs for one seed (default 0, `--seed` to change); every refit is checked against the saved metrics. Counties are filled in using the US Atlas boundaries (`counties-albers-10m.json` from the `us-atlas` package), downloaded once and cached in `results/` (git-ignored). If the download is blocked, put that file from `npm pack us-atlas@3.0.1` at `results/counties-albers-10m.json`; without it (or with `--dots`) each county is drawn as a dot at its centre.
 
