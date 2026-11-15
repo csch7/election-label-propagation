@@ -11,6 +11,8 @@ Baselines reported alongside: 'persistence' (each test county's own 2020
 result, which a real forecaster would have for every county) and, for the
 same seeds, the usual setup with the seeds' true 2024 labels.
 """
+from functools import cache
+
 import numpy as np
 import pandas as pd
 
@@ -19,17 +21,26 @@ from ..evaluation.metrics import report
 from ..evaluation.results import run_path
 from ..evaluation.splits import eligible_counties, fold_array, known_mask, make_folds, make_split, node_arrays
 from ..evaluation.tuning import evaluate, tune
-from ..graphs.adjacency import get_adjacency_graph
-from ..graphs.demographics import get_demographic_graph
+from ..graphs.adjacency import geographic_similarity, get_adjacency_graph
+from ..graphs.demographics import get_demographic_graph, get_similarity_matrix
 from ..models.knn import KNNClassifier
 from ..models.label_propagation import LabelPropagation
 
 DEFAULT_FRACS = (0.05, 0.1, 0.2, 0.4, None)  # share of all counties; None = whole train pool
 
 GRIDS = {
-    "knn": (KNNClassifier, {"k": [3, 10, None], "weighted": [True, False]}),
-    "lp": (LabelPropagation, {"alpha": [0.5, 0.8, 0.95]}),
+    "knn": (KNNClassifier, {"k": [3, 10, 50], "weighted": [True, False]}, "similarity"),
+    "lp": (LabelPropagation, {"alpha": [0.5, 0.8, 0.95]}, "graph"),
 }
+
+
+@cache
+def _graphs():
+    """(name, node ids, graph edges W, full similarity matrix) for each graph."""
+    b_ids, A = get_adjacency_graph()
+    d_ids, W = get_demographic_graph()
+    return (("border", b_ids, A, geographic_similarity(b_ids)),
+            ("demographic", d_ids, W, get_similarity_matrix()[1]))
 
 
 def run(split_name="stratified", fracs=DEFAULT_FRACS, prev_year=2020, year=2024, seed=0, df=None):
@@ -41,7 +52,7 @@ def run(split_name="stratified", fracs=DEFAULT_FRACS, prev_year=2020, year=2024,
     split = make_split(split_name, df, seed)
     y_prev_all, y_now_all = build_labels(prev_year), build_labels(year)
     rows = []
-    for gname, (geoids, W) in (("border", get_adjacency_graph()), ("demographic", get_demographic_graph())):
+    for gname, geoids, W, S_full in _graphs():
         y_now, train, test = node_arrays(geoids, split, y_now_all)
         y_prev = node_arrays(geoids, split, y_prev_all)[0]
         # persistence baseline: a test county's own previous result
@@ -51,11 +62,12 @@ def run(split_name="stratified", fracs=DEFAULT_FRACS, prev_year=2020, year=2024,
             seeds = known_mask(train & ~np.isnan(y_prev), geoids, df, frac, seed=seed)
             folds = fold_array(geoids, make_folds(split_name, df.loc[np.asarray(geoids)[seeds]], seed=seed))
             label = "max" if frac is None else frac
-            for mname, (cls, grid) in GRIDS.items():
+            for mname, (cls, grid, matrix) in GRIDS.items():
+                M = W if matrix == "graph" else S_full
                 for source, y_fit in (("prev-year seeds", y_prev), ("current-year seeds", y_now)):
-                    best, _ = tune(cls, W, y_fit, folds, grid, y_eval=y_now)
+                    best, _ = tune(cls, M, y_fit, folds, grid, y_eval=y_now)
                     rows.append((gname, f"{mname} / {source}", label,
-                                 evaluate(cls, best, W, y_fit, seeds, test, y_eval=y_now)))
+                                 evaluate(cls, best, M, y_fit, seeds, test, y_eval=y_now)))
     return rows
 
 

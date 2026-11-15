@@ -1,13 +1,14 @@
-"""k-nearest-neighbour classifier over a similarity / adjacency matrix.
+"""k-nearest-neighbour classifier over a similarity matrix.
 
 A test county is predicted from the labels of the k labelled (training)
-counties it is most strongly connected to in the matrix W:
-  * demographic graph: pass the weight matrix W (edges to its similar counties)
-    or the full similarity matrix S (true kNN over every training county);
-  * border graph: pass the 0/1 adjacency matrix; only bordering training
-    counties vote, so pass k=None to let all of them vote.
-Only direct connections are used, unlike label propagation, which also
-spreads labels through unlabelled counties over multiple hops.
+counties most similar to it, voting weighted by similarity (or equally). The
+matrix covers every pair of counties, so a county always has neighbours even
+when few counties are labelled:
+  * demographic graph: cosine similarity of the demographic features;
+  * border graph: geographic proximity of county centres (nearest counties,
+    whether or not they share a border).
+Only direct similarity is used, unlike label propagation, which also spreads
+labels through unlabelled counties over multiple hops.
 """
 import numpy as np
 

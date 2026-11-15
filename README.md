@@ -3,3 +3,126 @@
 Repository for the UNC Chapel Hill STOR-565 final project.
 
 Compare how label propagation and kNN perform when predicting election results in counties by either demographic similarity or locale.
+
+**Task.** Predict which party won each county in the 2024 US presidential election (Democratic = 1, Republican = 0), given the results of some other counties, using two ways of deciding which counties are "close":
+
+- **border graph** (locale): two counties are linked if they share a border;
+- **demographic graph**: two counties are linked if their age and race/ethnicity make-up is similar.
+
+Two models are compared on each graph:
+
+- **kNN**: a county takes the majority (similarity-weighted) vote of the k most similar counties whose result is known.
+- **label propagation**: known results are spread along the graph's edges, so a county is influenced by counties several hops away, not only its direct neighbours.
+
+## Running it
+
+```bash
+python main.py                                   # full comparison, 10 seeds, both split types
+python main.py --seeds 3 --splits stratified     # quicker
+python main.py --train-frac 0.1 0.4 max          # vary how many county results are known
+python main.py --previous-year                   # also run the previous-year seeding experiment
+```
+
+Only numpy, pandas and PyYAML are needed. Output goes to `results/runs/<date>_<experiment>[_<variant>].csv` (a rerun on the same day overwrites that day's file) and a summary table is printed. `python -m src.graphs.adjacency` and `python -m src.graphs.demographics` rebuild the saved graphs; `python -m src.evaluation.splits` regenerates the example split files.
+
+## Layout
+
+```
+data/raw/            source files (counties, borders, census, votes)
+data/preprocessed/   saved graphs (.npz), demographic features, example splits
+results/runs/        one CSV per experiment run
+config/config.yml    default values for the graph and kNN settings
+src/graphs/          border and demographic graph construction, save/load
+src/models/          knn.py, label_propagation.py
+src/evaluation/      labels, splits, cross-validated tuning, metrics, results paths
+src/experiments/     previous-year seeding experiment
+main.py              runs the full comparison
+```
+
+## Design decisions
+
+**Data.** Counties are identified by 5-digit GEOID. Labels come from the 2024 presidential results: the Democratic candidate's votes against the Republican's, using the `TOTAL` row where a county reports by voting mode and summing all modes otherwise (ties go to Republican). Features come from the Census county population estimates (most recent year in the file): the share of the population in each of the 18 age groups and in 7 race/ethnicity groups, 25 features in all. A county is *eligible* if it has both features and a label (3,103 counties; about 14% voted Democratic). Puerto Rico, territories, and a few counties missing from either source are left out of the split, but stay in the graphs as unlabelled nodes.
+
+**Border graph.** Built from `Bordering Counties.csv`, which lists each border once, so it is made symmetric. 3,235 counties, 9,297 edges, 21 counties with no neighbours (islands).
+
+**Demographic graph.** Similarity between counties is the cosine similarity of their standardised features. The default graph links each county to its 5 most similar counties (made symmetric, 3,144 counties, 12,353 edges), with the similarity as the edge weight. We chose this over a similarity threshold because a threshold leaves many counties with no edges (at 0.95, about 77% of counties had none) while others get hundreds. A threshold or a hybrid of both (threshold plus a top-k floor) can still be built with `build_demographic_graph(method=...)`, but the comparison uses the k-nearest-neighbours graph.
+
+**kNN does not use the graph's edges.** kNN runs on the similarity between *every* pair of counties: cosine similarity of features for the demographic graph, and geographic proximity of county centres for the border graph (the nearest counties, whether or not they border). An earlier version restricted kNN to a county's direct graph neighbours. With only a few counties labelled, most test counties then had no labelled neighbour (at 5% known, about 70% had none), so kNN fell back to the overall average and looked much worse than label propagation for reasons unrelated to the method. That version was removed. Label propagation, by contrast, uses the graph's edges and spreads labels across many hops.
+
+**Train/test split.** 20% of eligible counties are held out as the test set; the other 80% is the *training pool*. kNN and label propagation have no training phase, so the counties whose labels are known are the training counties. Two ways of choosing the test counties:
+
+- `stratified` (default): sorted by state, then winner, then the first principal component of the demographics, and one random county is taken from each block of five, so the test set mirrors each state's party mix and the demographic range.
+- `block`: contiguous test regions of about 10 counties are grown from random seeds by breadth-first search over the border graph, within each state. Test counties are then far from labelled ones, a harder test.
+
+Both models are run on the *same* test counties. The graphs do not have to cover the same counties.
+
+**Training size.** `--train-frac` is the share of *all* eligible counties whose labels are known (at most 0.8). Smaller values subsample the training pool, state-stratified. `max` uses the whole pool.
+
+**Tuning by cross-validation.** There is no separate validation set. The known counties are split into 5 folds with the same method as the test split (stratified or block). For each parameter setting, every fold is predicted from the other four, and the best parameters and decision threshold are chosen on the pooled out-of-fold predictions. The final model is then fitted with all known counties and scored once on the test set. (It has 5/5 of the known labels rather than the 4/5 used inside each fold, the usual cross-validation convention.) The test set is never used for tuning.
+
+**Decision threshold.** Only about 14% of counties are Democratic, so a 0.5 cutoff rarely predicts Democratic. The threshold is tuned along with the other parameters, to maximise balanced accuracy.
+
+**Metrics.** Democratic is the positive class. We report balanced accuracy (the average recall over the two classes; the main number, since guessing Republican everywhere scores about 0.86 accuracy but only 0.5 balanced accuracy), accuracy, precision, recall, F1 and AUC. AUC is computed from the predicted probabilities and does not depend on the threshold; the others use the tuned threshold. Each experiment is repeated over several random seeds (default 10). Each seed redraws the test split, the known counties and the folds, and results are reported as mean and standard deviation over seeds. An "always Republican" baseline row is included.
+
+**Previous-year experiment** (`--previous-year`). Instead of knowing the 2024 result for the known counties, we only know their 2020 result. Those 2020 labels seed the models, which predict 2024 for the test counties. For reference, "persistence" (each test county's own 2020 result) scores about 0.98 balanced accuracy, far above any graph model, so the graph methods are only useful when a county's own history is unavailable.
+
+## Parameters
+
+**Command line (`main.py`)**
+
+| option | meaning | default |
+|---|---|---|
+| `--seeds N` | number of random repeats (each redraws the split, known counties and folds) | 10 |
+| `--splits` | `stratified` and/or `block` test-split type | both |
+| `--train-frac F ...` | share of all counties whose labels are known; `max` = every non-test county (0.8) | `max` (with `--previous-year`: 0.05 0.1 0.2 0.4 max) |
+| `--previous-year` | also run the previous-year seeding experiment | off |
+
+**Models and what is tuned** (the grids are in `main.py`)
+
+| parameter | model | meaning |
+|---|---|---|
+| `k` | kNN | number of most similar known counties that vote; grid 1, 3, 5, 10, 20, 50 |
+| `weighted` | kNN | votes counted by similarity (true) or equally (false) |
+| `alpha` | label propagation | how far labels spread, between 0 and 1. Low values keep a county close to its own initial label, high values let neighbours' influence travel further. Grid 0.5, 0.8, 0.9, 0.95, 0.99 |
+| `threshold` | both | probability above which a county is called Democratic; grid 0.05 to 0.95 |
+| `class_mass_normalization` | label propagation | option that rescales the scores to the training class shares; off in the comparison |
+
+**Fixed settings**
+
+| setting | where | meaning | value |
+|---|---|---|---|
+| test fraction | `splits.py` | share of counties held out | 0.2 |
+| number of folds | `make_folds` | cross-validation folds | 5 |
+| `block_size` | `block_split` | target size of each test block | 10 counties |
+| `scale_km` | `geographic_similarity` | distance at which proximity halves: similarity is 1 / (1 + km / scale_km); only changes vote weights, not which counties are nearest | 100 |
+| `nearest_neighbors` | `config.yml` | default k if `KNNClassifier` is created without one | 5 |
+| `demographic_graph_k` | `config.yml` | neighbours per county in the demographic graph used by label propagation | 5 |
+| `demographic_similarity` | `config.yml` | similarity threshold; only used by the `threshold` and `hybrid` graph methods | 0.8 |
+| census year, vote years | `demographics.py`, `labels.py` | latest census year in the file; labels from 2024 (2020 for the previous-year experiment) | |
+
+## Results
+
+Test balanced accuracy, mean over 10 seeds, by the share of all counties whose labels are known (`results/runs/2026-11-15_model_comparison.csv` has every metric and the per-seed numbers, including standard deviations of about 0.01 to 0.05).
+
+| split | graph | model | 5% | 10% | 20% | 40% | 80% (max) |
+|---|---|---|---|---|---|---|---|
+| stratified | border | kNN | 0.658 | 0.704 | 0.732 | 0.761 | 0.757 |
+| stratified | border | label propagation | 0.645 | 0.701 | 0.733 | 0.745 | 0.754 |
+| stratified | demographic | kNN | 0.776 | 0.784 | 0.815 | 0.829 | 0.861 |
+| stratified | demographic | label propagation | 0.776 | 0.795 | 0.809 | 0.836 | 0.861 |
+| block | border | kNN | 0.651 | 0.695 | 0.731 | 0.725 | 0.751 |
+| block | border | label propagation | 0.635 | 0.687 | 0.715 | 0.730 | 0.728 |
+| block | demographic | kNN | 0.768 | 0.775 | 0.801 | 0.817 | 0.842 |
+| block | demographic | label propagation | 0.741 | 0.783 | 0.816 | 0.827 | 0.839 |
+
+- The demographic graph beats the border graph by about 10 points at every training size.
+- kNN and label propagation are close everywhere, within the seed-to-seed spread. Label propagation has a slightly higher AUC (by about 0.01 to 0.02), but we do not claim a winner.
+- More known counties help both models, with most of the gain by 40%.
+- For reference, always guessing Republican scores 0.5 balanced accuracy (0.86 accuracy).
+
+## Notes and limitations
+
+- Random stratified splits favour the border graph, because neighbouring counties tend to vote alike; the block split removes that advantage.
+- Selecting the threshold and parameters on a validation set of only about 70 Democratic counties is noisy; the cross-validation and the repeats over seeds are there to reduce that. Differences of one or two points between models are within the seed-to-seed spread.
+- Both graphs and the split use only features and borders, not votes, except that the stratified split and the folds use the labels to balance parties.
+- `make_county_map.py` (a collaborator's script) reads the November 11 results file and the saved stratified split; it is independent of the changes above.

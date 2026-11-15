@@ -13,8 +13,8 @@ For every (split strategy, random seed, graph, model):
   3. tune the model's parameters and decision threshold by 5-fold cross-validation
      among the known counties,
   4. fit with all known counties' labels and score once on the test counties.
-The "knn" model only sees direct graph connections; "knn_full" is the classic kNN
-over all counties' similarity (demographic) or geographic distance (border).
+kNN uses all counties' similarity (demographic) or geographic distance (border);
+label propagation spreads labels along the graph's edges.
 Results are saved to results/runs/<date>_model_comparison.csv and summarised
 as mean +- std over seeds. Metrics treat Democratic as the positive class.
 """
@@ -34,13 +34,12 @@ from src.models.knn import KNNClassifier
 from src.models.label_propagation import LabelPropagation
 
 # name -> (model class, parameter grid, which matrix it runs on)
-#   "graph": the graph's own edges (direct connections only)
-#   "full":  similarity between every pair of counties (demographic: cosine
-#            similarity of features; border: geographic proximity), so kNN always
-#            finds neighbours even when few counties are labelled
+#   "similarity": similarity between every pair of counties (demographic: cosine
+#                 similarity of features; border: geographic proximity), so kNN
+#                 always finds neighbours even when few counties are labelled
+#   "graph":      the graph's own edges, over which labels are spread
 MODELS = {
-    "knn": (KNNClassifier, {"k": [1, 3, 5, 10, 20, None], "weighted": [True, False]}, "graph"),
-    "knn_full": (KNNClassifier, {"k": [1, 3, 5, 10, 20, 50], "weighted": [True, False]}, "full"),
+    "knn": (KNNClassifier, {"k": [1, 3, 5, 10, 20, 50], "weighted": [True, False]}, "similarity"),
     "label_propagation": (LabelPropagation, {"alpha": [0.5, 0.8, 0.9, 0.95, 0.99]}, "graph"),
 }
 
@@ -69,7 +68,7 @@ def run_comparison(splits, seeds, fracs=(None,)):
                     rows.append({**base, "model": "majority", "params": "",
                                  **report(y[ti].astype(int), np.zeros(len(ti), dtype=int), np.zeros(len(ti)))})
                     for mname, (cls, grid, source) in MODELS.items():
-                        M = W if source == "graph" else S_full
+                        M = W if source == "graph" else S_full  # S_full: similarity matrix
                         best, _ = tune(cls, M, y, folds, grid)
                         scores = evaluate(cls, best, M, y, known, test)
                         params = {k: v for k, v in best.items() if k != "score"}
