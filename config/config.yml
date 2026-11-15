@@ -14,7 +14,8 @@ geographic_scale_km: 100        # proximity = 1 / (1 + km / scale); only changes
 blend_lambdas: [0.25, 0.5, 0.75]  # combined graph: share of border (vs demographic); tuned by cross-validation
 
 # ---- Train / test splits ----------------------------------------------------
-test_fraction: 0.2       # share of counties held out for testing
+test_fraction: 0.2       # share of counties held out for testing (when fewer labels are known, the unused
+                         # training-pool counties are scored as well)
 cv_folds: 5              # cross-validation folds used for tuning
 block_size: 10           # target size of each test block in the block split
 split_strategies: [block]   # test-split types run by main.py (also available: stratified)

@@ -7,7 +7,8 @@ the demographic graph, predicting county-level 2024 presidential winners.
     python main.py --previous-year # also run the previous-year seeding experiment
 
 For every (split strategy, random seed, graph, model):
-  1. hold out 20% of the counties as the test set,
+  1. hold out 20% of the counties as the test set (counties whose labels are not
+     known, i.e. the unused part of the training pool, are scored too),
   2. choose the known (training) counties: --train-frac of ALL counties, sampled
      from the remaining 80% (default: all of them),
   3. tune the model's parameters and decision threshold by 5-fold cross-validation
@@ -79,10 +80,13 @@ def run_comparison(splits, seeds, fracs=(None,)):
         for seed in seeds:
             split = make_split(split_name, df, seed)
             for gname, (geoids, sources) in graphs.items():
-                y, train, test = node_arrays(geoids, split)
-                ti = np.flatnonzero(test)
+                y, train, held_out = node_arrays(geoids, split)
                 for frac in fracs:
                     known = known_mask(train, geoids, df, frac, seed=seed)
+                    # scored counties: the held-out test set plus every pool county whose label is not known
+                    # (at "max" every pool county is known, so this is just the test set)
+                    test = (train | held_out) & ~known
+                    ti = np.flatnonzero(test)
                     folds = fold_array(geoids, make_folds(split_name, df.loc[np.asarray(geoids)[known]], seed=seed))
                     base = {"split": split_name, "seed": seed, "graph": gname,
                             "train_frac": "max" if frac is None else frac,

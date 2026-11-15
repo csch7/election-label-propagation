@@ -121,8 +121,8 @@ def errors_grid(canvas, repro, comp, out, split="stratified", seed=0, frac="max"
             ax.text(1.0, 1.0, f"{(kind == 'ok').mean():.0%} correct · {(kind == 'miss').sum()} missed · {(kind == 'false').sum()} false",
                     transform=ax.transAxes, ha="right", va="bottom", fontsize=9.5, color=st.MUTED)
     fig.subplots_adjust(top=0.84, bottom=0.08, left=0.01, right=0.99, wspace=0.02, hspace=0.12)
-    _legend(fig, [(l, c) for l, c in cats.values()] + [("Not in test set", st.BLANK)])
+    _legend(fig, [(l, c) for l, c in cats.values()] + [("Label known / no data", st.BLANK)])
     st.headline(fig, "Where does each model go wrong?",
-                f"{st.SPLIT_LABEL[split]}, seed {seed}; labels known for {row.known_share:.0%} of counties; test counties only")
+                f"{st.SPLIT_LABEL[split]}, seed {seed}; labels known for {row.known_share:.0%} of counties; scored counties only (the test set plus counties whose label is not known)")
     fig.savefig(out, dpi=200)
     plt.close(fig)

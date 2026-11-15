@@ -29,9 +29,10 @@ class Reproducer:
         params = ast.literal_eval(row.params)
         threshold, lam = params.pop("threshold"), params.pop("lam", None)
         M = next(m for l, m in sources[source]() if l == lam)
-        y, train, test = node_arrays(geoids, self.split(row.split, int(row.seed)))
+        y, train, held_out = node_arrays(geoids, self.split(row.split, int(row.seed)))
         frac = None if row.train_frac == "max" else float(row.train_frac)
         known = known_mask(train, geoids, self.df, frac, seed=int(row.seed))
+        test = (train | held_out) & ~known  # test set plus every pool county whose label is not known
         proba = cls(**params).fit(M, y, known).predict_proba(np.flatnonzero(test))
         actual = y[test].astype(int)
         pred = (proba > threshold).astype(int)

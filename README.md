@@ -71,7 +71,7 @@ main.py              runs the full comparison
 
 Both models are run on the *same* test counties. The graphs do not have to cover the same counties.
 
-**Training size.** `--train-frac` is the share of *all* eligible counties whose labels are known (at most 0.8). Smaller values subsample the training pool, state-stratified. `max` uses the whole pool.
+**Training size.** `--train-frac` is the share of *all* eligible counties whose labels are known (at most 0.8). Smaller values subsample the training pool, state-stratified. `max` uses the whole pool. The scored counties are the 20% test set *plus every training-pool county whose label is not known*. At `max` that is just the test set (621 counties); at 5% known it is about 2,950 counties, so the small training sizes are scored on far more counties and are less noisy. Those extra counties' labels are never used for fitting or tuning, so this does not leak. The scored counties therefore differ a little between training sizes (the test set is always included).
 
 **Tuning by cross-validation.** There is no separate validation set. The known counties are split into 5 folds with the same method as the test split (stratified or block). For each parameter setting, every fold is predicted from the other four, and the best parameters and decision threshold are chosen on the pooled out-of-fold predictions. The final model is then fitted with all known counties and scored once on the test set. (It has 5/5 of the known labels rather than the 4/5 used inside each fold, the usual cross-validation convention.) The test set is never used for tuning.
 
@@ -125,21 +125,22 @@ All of these live in `config/config.yml` (with comments). Command-line options (
 
 ## Results
 
-Block split. Test balanced accuracy, mean over 10 seeds, by the share of all counties whose labels are known (`results/runs/2026-11-15_model_comparison.csv` has every metric and the per-seed numbers; standard deviations are about 0.01 to 0.05).
+Block split. Balanced accuracy on the scored counties (the test set plus unknown training-pool counties), mean over 10 seeds, by the share of all counties whose labels are known (`results/runs/2026-11-15_model_comparison.csv` has every metric and the per-seed numbers; standard deviations are about 0.01 to 0.03, except label propagation on the border graph at 5%, about 0.07).
 
 | graph | model | 5% | 10% | 20% | 40% | 80% (max) |
 |---|---|---|---|---|---|---|
-| border | kNN | 0.651 | 0.695 | 0.731 | 0.725 | 0.751 |
-| border | label propagation | 0.635 | 0.687 | 0.715 | 0.730 | 0.728 |
-| demographic | kNN | 0.768 | 0.775 | 0.801 | 0.817 | 0.842 |
-| demographic | label propagation | 0.741 | 0.783 | 0.816 | 0.827 | 0.839 |
-| combined | kNN | 0.769 | 0.788 | 0.822 | 0.831 | 0.854 |
-| combined | label propagation | 0.746 | 0.775 | 0.810 | 0.834 | 0.855 |
+| border | kNN | 0.650 | 0.697 | 0.728 | 0.744 | 0.751 |
+| border | label propagation | 0.627 | 0.693 | 0.716 | 0.740 | 0.728 |
+| demographic | kNN | 0.774 | 0.781 | 0.805 | 0.829 | 0.842 |
+| demographic | label propagation | 0.751 | 0.786 | 0.818 | 0.835 | 0.839 |
+| combined | kNN | 0.766 | 0.790 | 0.831 | 0.843 | 0.854 |
+| combined | label propagation | 0.747 | 0.784 | 0.815 | 0.841 | 0.855 |
 
 - The demographic graph beats the border graph by about 10 points at every training size.
-- The combined graph is ahead of the demographic graph by roughly 1 to 2 points, which is within the seed-to-seed spread, so it is suggestive rather than conclusive. Cross-validation chose the smallest border share we tried (`lam = 0.25`) in most runs, so borders add little on top of demographics. A smaller `lam` was not tried.
-- kNN and label propagation are close everywhere, within the seed-to-seed spread, so we do not claim a winner. AUC tells the same story. With few known counties (5%), kNN is a little ahead on every graph.
+- The combined graph is ahead of the demographic graph by about 1 to 3 points from 20% known upward, which is around the seed-to-seed spread, so it is suggestive rather than conclusive. At 5% known the demographic graph is ahead. Cross-validation chose the smallest border share we tried (`lam = 0.25`) in most runs, so borders add little on top of demographics. A smaller `lam` was not tried.
+- kNN and label propagation are close everywhere, within the seed-to-seed spread, so we do not claim a winner. AUC tells the same story. With few known counties (5%), kNN is ahead of label propagation on every graph, by 2 to 3 points.
 - More known counties help both models, with most of the gain by 20% to 40%.
+- The results from the previous-year experiment (`--previous-year`) were produced before this change to which counties are scored, so they are not comparable.
 - For reference, always guessing Republican scores 0.5 balanced accuracy (0.86 accuracy).
 
 ## Figures
@@ -150,7 +151,7 @@ Block split. Test balanced accuracy, mean over 10 seeds, by the share of all cou
 |---|---|
 | `learning_curves.png` | balanced accuracy and AUC against the share of counties known, for every graph and model |
 | `metrics_heatmap.png` | all six metrics for every graph and model at the full training size |
-| `map_errors.png` | right and wrong calls on the test counties for every model and graph (seed 0) |
+| `map_errors.png` | right and wrong calls on the scored counties for every model and graph (seed 0) |
 | `map_errors_5pct.png` | the same map with labels known for only 5% of counties (`--train-frac` makes other sizes, e.g. `python make_figures.py --only maps --train-frac 0.05 0.1 max`) |
 
 The map refits the runs for one seed (default 0, `--seed` to change); every refit is checked against the saved metrics. Counties are filled in using the US Atlas boundaries (`counties-albers-10m.json` from the `us-atlas` package), downloaded once and cached in `results/` (git-ignored). If the download is blocked, put that file from `npm pack us-atlas@3.0.1` at `results/counties-albers-10m.json`; without it (or with `--dots`) each county is drawn as a dot at its centre.

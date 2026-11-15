@@ -31,7 +31,7 @@ def learning_curves(comp, out, split):
     fig.legend(handles=handles, loc="lower center", ncol=5, bbox_to_anchor=(0.5, 0.0))
     fig.subplots_adjust(top=0.76, bottom=0.2, wspace=0.16, left=0.07, right=0.98)
     st.headline(fig, "More known counties, better predictions",
-                f"{st.SPLIT_LABEL[split]}; test performance vs training size; mean and standard deviation over {d.seed.nunique()} random seeds")
+                f"{st.SPLIT_LABEL[split]}; performance on the scored counties vs training size; mean and standard deviation over {d.seed.nunique()} random seeds")
     fig.savefig(out, dpi=200)
     plt.close(fig)
 

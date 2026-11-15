@@ -57,13 +57,15 @@ def run(split_name="stratified", fracs=None, prev_year=None, year=None, seed=0, 
     y_prev_all, y_now_all = build_labels(prev_year), build_labels(year)
     rows = []
     for gname, geoids, W, S_full in _graphs():
-        y_now, train, test = node_arrays(geoids, split, y_now_all)
+        y_now, train, held_out = node_arrays(geoids, split, y_now_all)
         y_prev = node_arrays(geoids, split, y_prev_all)[0]
-        # persistence baseline: a test county's own previous result
-        ti = np.flatnonzero(test & ~np.isnan(y_prev))
-        rows.append((gname, "persistence", "-", report(y_now[ti].astype(int), y_prev[ti].astype(int))))
         for frac in fracs:
             seeds = known_mask(train & ~np.isnan(y_prev), geoids, df, frac, seed=seed)
+            test = (train | held_out) & ~seeds  # test set plus every pool county that is not a seed
+            # persistence baseline: a scored county's own previous result
+            ti = np.flatnonzero(test & ~np.isnan(y_prev))
+            if frac == fracs[0]:
+                rows.append((gname, "persistence", "-", report(y_now[ti].astype(int), y_prev[ti].astype(int))))
             folds = fold_array(geoids, make_folds(split_name, df.loc[np.asarray(geoids)[seeds]], seed=seed))
             label = "max" if frac is None else frac
             for mname, (cls, grid, matrix) in GRIDS.items():
