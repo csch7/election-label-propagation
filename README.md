@@ -23,9 +23,15 @@ python main.py --train-frac 0.1 0.4 max          # vary how many county results 
 python main.py --previous-year                   # also run the previous-year seeding experiment
 ```
 
+```bash
+python make_figures.py             # all figures -> results/figures/
+python make_figures.py --only charts
+python make_figures.py --dots     # draw maps without downloading county boundaries
+```
+
 Every setting (split sizes, parameter grids, years, defaults for the command line) is in `config/config.yml`; edit it there rather than in the code. Command-line options override the experiment settings for one run.
 
-Only numpy, pandas and PyYAML are needed. Output goes to `results/runs/<date>_<experiment>[_<variant>].csv` (a rerun on the same day overwrites that day's file) and a summary table is printed. `python -m src.graphs.adjacency` and `python -m src.graphs.demographics` rebuild the saved graphs; `python -m src.evaluation.splits` regenerates the example split files.
+`pip install -r requirements.txt`. Only numpy, pandas and PyYAML are needed to run the comparison; matplotlib is needed for the figures. Output goes to `results/runs/<date>_<experiment>[_<variant>].csv` (a rerun on the same day overwrites that day's file) and a summary table is printed. `python -m src.graphs.adjacency` and `python -m src.graphs.demographics` rebuild the saved graphs; `python -m src.evaluation.splits` regenerates the example split files.
 
 ## Layout
 
@@ -39,6 +45,9 @@ src/graphs/          border and demographic graph construction, save/load
 src/models/          knn.py, label_propagation.py
 src/evaluation/      labels, splits, cross-validated tuning, metrics, results paths
 src/experiments/     previous-year seeding experiment
+src/visualization/   charts and county maps
+make_figures.py      makes the figures from the saved runs
+results/figures/     generated figures
 main.py              runs the full comparison
 ```
 
@@ -138,9 +147,26 @@ Test balanced accuracy, mean over 10 seeds, by the share of all counties whose l
 - More known counties help both models, with most of the gain by 40%.
 - For reference, always guessing Republican scores 0.5 balanced accuracy (0.86 accuracy).
 
+## Figures
+
+`python make_figures.py` reads the latest `results/runs/*_model_comparison.csv` (and the previous-year runs) and writes to `results/figures/`:
+
+| file | shows |
+|---|---|
+| `learning_curves.png` | balanced accuracy and AUC against the share of counties known, for every graph and model, both splits |
+| `metrics_heatmap.png` | all six metrics for every graph and model at the full training size |
+| `tuned_parameters.png` | which `k`, `alpha`, border share and decision threshold cross-validation chose |
+| `graph_degrees.png` | how many connections each county has in each graph |
+| `previous_year.png` | the previous-year seeding experiment, with the persistence baseline |
+| `map_splits.png` | which counties are held out in the stratified and block splits |
+| `map_errors.png` | right and wrong calls on the test counties for every model and graph |
+| `map_borders_vs_demographics.png` | which graph got each test county right |
+| `map_predicted_vs_actual.png` | actual winners next to the predicted chance of a Democratic win |
+
+The maps refit the runs for one seed (default 0, `--seed` to change); every refit is checked against the saved metrics. County boundaries come from the US Atlas, downloaded once and cached in `results/`; if the download is unavailable (or with `--dots`), each county is drawn as a dot at its centre.
+
 ## Notes and limitations
 
 - Random stratified splits favour the border graph, because neighbouring counties tend to vote alike; the block split removes that advantage.
 - Selecting the threshold and parameters on a validation set of only about 70 Democratic counties is noisy; the cross-validation and the repeats over seeds are there to reduce that. Differences of one or two points between models are within the seed-to-seed spread.
 - Both graphs and the split use only features and borders, not votes, except that the stratified split and the folds use the labels to balance parties.
-- `make_county_map.py` (a collaborator's script) reads the November 11 results file and the saved stratified split; it is independent of the changes above.
