@@ -114,7 +114,7 @@ All of these live in `config/config.yml` (with comments). Command-line options (
 
 ## Results
 
-Test balanced accuracy, mean over 10 seeds, by the share of all counties whose labels are known (`results/runs/2026-11-15_model_comparison.csv` has every metric and the per-seed numbers, including standard deviations of about 0.01 to 0.05).
+Test balanced accuracy, mean over 10 seeds, by the share of all counties whose labels are known (`results/runs/2026-11-15_model_comparison.csv` has every metric and the per-seed numbers; standard deviations are about 0.01 to 0.05).
 
 | split | graph | model | 5% | 10% | 20% | 40% | 80% (max) |
 |---|---|---|---|---|---|---|---|
@@ -122,13 +122,19 @@ Test balanced accuracy, mean over 10 seeds, by the share of all counties whose l
 | stratified | border | label propagation | 0.645 | 0.701 | 0.733 | 0.745 | 0.754 |
 | stratified | demographic | kNN | 0.776 | 0.784 | 0.815 | 0.829 | 0.861 |
 | stratified | demographic | label propagation | 0.776 | 0.795 | 0.809 | 0.836 | 0.861 |
+| stratified | combined | kNN | 0.795 | 0.810 | 0.837 | 0.859 | 0.864 |
+| stratified | combined | label propagation | 0.773 | 0.788 | 0.825 | 0.843 | 0.878 |
 | block | border | kNN | 0.651 | 0.695 | 0.731 | 0.725 | 0.751 |
 | block | border | label propagation | 0.635 | 0.687 | 0.715 | 0.730 | 0.728 |
 | block | demographic | kNN | 0.768 | 0.775 | 0.801 | 0.817 | 0.842 |
 | block | demographic | label propagation | 0.741 | 0.783 | 0.816 | 0.827 | 0.839 |
+| block | combined | kNN | 0.769 | 0.788 | 0.822 | 0.831 | 0.854 |
+| block | combined | label propagation | 0.746 | 0.775 | 0.810 | 0.834 | 0.855 |
 
 - The demographic graph beats the border graph by about 10 points at every training size.
-- kNN and label propagation are close everywhere, within the seed-to-seed spread. Label propagation has a slightly higher AUC (by about 0.01 to 0.02), but we do not claim a winner.
+- The combined graph is best or tied for best almost everywhere, ahead of the demographic graph by roughly 1 to 4 points. The gain is modest, and often about the size of the seed-to-seed spread, so it is suggestive rather than conclusive.
+- Cross-validation chose the smallest border share we tried (`lam = 0.25`) in most runs (about 85%). Borders add a little to demographics, but the demographic graph does most of the work. A smaller `lam` was not tried.
+- kNN and label propagation are close everywhere, within the seed-to-seed spread, so we do not claim a winner. AUC tells the same story.
 - More known counties help both models, with most of the gain by 40%.
 - For reference, always guessing Republican scores 0.5 balanced accuracy (0.86 accuracy).
 
