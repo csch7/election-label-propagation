@@ -16,6 +16,7 @@ from functools import cache
 import numpy as np
 import pandas as pd
 
+from ..config import load_config, parse_fracs
 from ..evaluation.labels import build_labels
 from ..evaluation.metrics import report
 from ..evaluation.results import run_path
@@ -26,11 +27,11 @@ from ..graphs.demographics import get_demographic_graph, get_similarity_matrix
 from ..models.knn import KNNClassifier
 from ..models.label_propagation import LabelPropagation
 
-DEFAULT_FRACS = (0.05, 0.1, 0.2, 0.4, None)  # share of all counties; None = whole train pool
+cfg = load_config()
 
-GRIDS = {
-    "knn": (KNNClassifier, {"k": [3, 10, 50], "weighted": [True, False]}, "similarity"),
-    "lp": (LabelPropagation, {"alpha": [0.5, 0.8, 0.95]}, "graph"),
+GRIDS = {  # grids are set in config.yml
+    "knn": (KNNClassifier, {"k": cfg["previous_year_knn_k_grid"], "weighted": cfg["knn_weighted_grid"]}, "similarity"),
+    "lp": (LabelPropagation, {"alpha": cfg["previous_year_lp_alpha_grid"]}, "graph"),
 }
 
 
@@ -43,11 +44,14 @@ def _graphs():
             ("demographic", d_ids, W, get_similarity_matrix()[1]))
 
 
-def run(split_name="stratified", fracs=DEFAULT_FRACS, prev_year=2020, year=2024, seed=0, df=None):
+def run(split_name="stratified", fracs=None, prev_year=None, year=None, seed=0, df=None):
     """One run: draw a train/test split with this random seed, sample the seed
     counties, tune by 5-fold CV and score on test. fracs: share of ALL counties
     that are seeded (None = the whole train pool). Returns a list of
     (graph, method, train fraction, metrics dict)."""
+    fracs = parse_fracs(cfg["previous_year_train_fractions"]) if fracs is None else fracs
+    prev_year = cfg["previous_year"] if prev_year is None else prev_year
+    year = cfg["target_year"] if year is None else year
     df = eligible_counties() if df is None else df
     split = make_split(split_name, df, seed)
     y_prev_all, y_now_all = build_labels(prev_year), build_labels(year)

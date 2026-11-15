@@ -10,8 +10,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import yaml
 
+from ..config import load_config
 from .graph_io import PREPROCESSED_DIR, RAW_DIR, ROOT, load_graph, save_graph
 
 CENSUS_ZIP = RAW_DIR / "Census Data.zip"
@@ -22,22 +22,18 @@ FEATURES_PATH = PREPROCESSED_DIR / "demographic_features.csv"
 RACE_COLS = ["NHWA", "NHBA", "NHIA", "NHAA", "NHNA", "NHTOM", "H"]
 
 
-def load_config(path=ROOT / "config" / "config.yml"):
-    with open(path) as f:
-        return yaml.safe_load(f)
-
-
 def build_features(year=None, zip_path=CENSUS_ZIP):
     """Return a DataFrame indexed by GEOID (str) with one row per county:
     age-group shares (AGE_1..AGE_18) and race/ethnicity shares (sum to 1 each).
 
-    year: Census YEAR code; defaults to the most recent in the file.
+    year: Census YEAR code; defaults to `census_year` in the config, else the
+    most recent in the file.
     """
     cols = ["GEOID", "YEAR", "AGEGRP", "TOT_POP"] + [f"{r}_{s}" for r in RACE_COLS for s in ("MALE", "FEMALE")]
     with zipfile.ZipFile(zip_path) as z:
         with z.open(z.namelist()[0]) as f:
             df = pd.read_csv(f, usecols=cols)
-    year = df.YEAR.max() if year is None else year
+    year = year if year is not None else (load_config()["census_year"] or df.YEAR.max())
     df = df[df.YEAR == year]
     df["GEOID"] = df.GEOID.astype(int).astype(str).str.zfill(5)
 

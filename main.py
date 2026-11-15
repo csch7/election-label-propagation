@@ -23,40 +23,62 @@ import argparse
 import numpy as np
 import pandas as pd
 
+from src.config import load_config, parse_fracs
 from src.evaluation.metrics import report
 from src.evaluation.results import run_path
-from src.evaluation.splits import eligible_counties, fold_array, known_mask, make_folds, make_split, node_arrays
+from src.evaluation.splits import (STRATEGIES, eligible_counties, fold_array, known_mask, make_folds,
+                                   make_split, node_arrays)
 from src.evaluation.tuning import evaluate, tune
 from src.experiments.previous_year import run_repeated
 from src.graphs.adjacency import geographic_similarity, get_adjacency_graph
+from src.graphs.combined import blend_edges, blend_similarity, build_components
 from src.graphs.demographics import get_demographic_graph, get_similarity_matrix
 from src.models.knn import KNNClassifier
 from src.models.label_propagation import LabelPropagation
 
-# name -> (model class, parameter grid, which matrix it runs on)
+cfg = load_config()
+
+# name -> (model class, parameter grid, which matrix it runs on); grids are set in config.yml
 #   "similarity": similarity between every pair of counties (demographic: cosine
 #                 similarity of features; border: geographic proximity), so kNN
 #                 always finds neighbours even when few counties are labelled
 #   "graph":      the graph's own edges, over which labels are spread
 MODELS = {
-    "knn": (KNNClassifier, {"k": [1, 3, 5, 10, 20, 50], "weighted": [True, False]}, "similarity"),
-    "label_propagation": (LabelPropagation, {"alpha": [0.5, 0.8, 0.9, 0.95, 0.99]}, "graph"),
+    "knn": (KNNClassifier, {"k": cfg["knn_k_grid"], "weighted": cfg["knn_weighted_grid"]}, "similarity"),
+    "label_propagation": (LabelPropagation, {"alpha": cfg["lp_alpha_grid"]}, "graph"),
 }
 
 
-def run_comparison(splits, seeds, fracs=(None,)):
-    df = eligible_counties()
+def load_graphs():
+    """name -> (node ids, {"graph": candidates, "similarity": candidates}), where
+    candidates() yields (lam, matrix) pairs. lam is None except for the combined
+    graph, which yields one blended matrix per lambda in the config (the best is
+    picked by cross-validation along with the other parameters)."""
     border_ids, A = get_adjacency_graph()
     demo_ids, W_demo = get_demographic_graph()
     sim_ids, S_demo = get_similarity_matrix()
     assert (sim_ids == demo_ids).all()
-    graphs = {"border": (border_ids, A, geographic_similarity(border_ids)),
-              "demographic": (demo_ids, W_demo, S_demo)}
+    parts = build_components()
+    return {
+        "border": (border_ids, {"graph": lambda: [(None, A)],
+                                "similarity": lambda: [(None, geographic_similarity(border_ids))]}),
+        "demographic": (demo_ids, {"graph": lambda: [(None, W_demo)],
+                                   "similarity": lambda: [(None, S_demo)]}),
+        "combined": (parts["geoids"], {
+            "graph": lambda: ((lam, blend_edges(parts, lam)) for lam in cfg["blend_lambdas"]),
+            "similarity": lambda: ((lam, blend_similarity(parts, lam)) for lam in cfg["blend_lambdas"])}),
+    }
+
+
+def run_comparison(splits, seeds, fracs=(None,)):
+    df = eligible_counties()
+    graphs = load_graphs()
+    sim_cache = {}  # geographic similarity is slow enough to compute once per graph
     rows = []
     for split_name in splits:
         for seed in seeds:
             split = make_split(split_name, df, seed)
-            for gname, (geoids, W, S_full) in graphs.items():
+            for gname, (geoids, sources) in graphs.items():
                 y, train, test = node_arrays(geoids, split)
                 ti = np.flatnonzero(test)
                 for frac in fracs:
@@ -68,12 +90,23 @@ def run_comparison(splits, seeds, fracs=(None,)):
                     rows.append({**base, "model": "majority", "params": "",
                                  **report(y[ti].astype(int), np.zeros(len(ti), dtype=int), np.zeros(len(ti)))})
                     for mname, (cls, grid, source) in MODELS.items():
-                        M = W if source == "graph" else S_full  # S_full: similarity matrix
-                        best, _ = tune(cls, M, y, folds, grid)
-                        scores = evaluate(cls, best, M, y, known, test)
-                        params = {k: v for k, v in best.items() if k != "score"}
+                        if source == "similarity" and gname == "border":
+                            sim_cache.setdefault("border", sources["similarity"]())
+                            candidates = sim_cache["border"]
+                        else:
+                            candidates = sources[source]()
+                        best = None
+                        for lam, M in candidates:
+                            b, _ = tune(cls, M, y, folds, grid)
+                            if best is None or b["score"] > best[0]["score"]:
+                                best = (b, lam, M)
+                        b, lam, M = best
+                        scores = evaluate(cls, b, M, y, known, test)
+                        params = {k: v for k, v in b.items() if k != "score"}
+                        if lam is not None:
+                            params["lam"] = lam
                         rows.append({**base, "model": mname, "params": str(params),
-                                     "cv_balanced_accuracy": best["score"], **scores})
+                                     "cv_balanced_accuracy": b["score"], **scores})
             print(f"finished {split_name} seed {seed}", flush=True)
     return pd.DataFrame(rows)
 
@@ -100,17 +133,18 @@ def summarise(runs):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--seeds", type=int, default=10, help="number of random seeds (default 10)")
-    ap.add_argument("--splits", nargs="+", default=["stratified", "block"], choices=["stratified", "block"])
+    ap.add_argument("--seeds", type=int, default=cfg["seeds"], help="number of random seeds (config: seeds)")
+    ap.add_argument("--splits", nargs="+", default=cfg["split_strategies"], choices=list(STRATEGIES),
+                    help="test-split types (config: split_strategies)")
     ap.add_argument("--train-frac", nargs="+", default=None, metavar="F",
                     help="share(s) of ALL counties whose labels are known (the training counties; at most "
-                         "0.8 since 20%% are held out for test), e.g. 0.1 0.4 max. 'max' = every non-test "
-                         "county (default; with --previous-year the default is 0.05 0.1 0.2 0.4 max)")
+                         "1 - test_fraction), e.g. 0.1 0.4 max. 'max' = every non-test county "
+                         "(config: train_fractions, or previous_year_train_fractions with --previous-year)")
     ap.add_argument("--previous-year", action="store_true", help="also run the previous-year seeding experiment")
     args = ap.parse_args()
 
-    fracs = [None if f == "max" else float(f) for f in args.train_frac] if args.train_frac else None
-    runs = run_comparison(args.splits, range(args.seeds), fracs or (None,))
+    fracs = parse_fracs(args.train_frac) if args.train_frac else None
+    runs = run_comparison(args.splits, range(args.seeds), fracs or parse_fracs(cfg["train_fractions"]))
     path = run_path("model_comparison")
     runs.to_csv(path, index=False)
     summarise(runs)

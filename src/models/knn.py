@@ -12,7 +12,7 @@ labels through unlabelled counties over multiple hops.
 """
 import numpy as np
 
-from ..graphs.demographics import load_config
+from ..config import load_config
 
 
 class KNNClassifier:

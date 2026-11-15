@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 
+from ..config import load_config
 from .graph_io import PREPROCESSED_DIR, RAW_DIR, load_graph, save_graph
 
 ADJACENCY_PATH = PREPROCESSED_DIR / "adjacency_graph.npz"
@@ -35,12 +36,14 @@ def build_adjacency_graph(counties=None, border_path=RAW_DIR / "Bordering Counti
     return geoids, A
 
 
-def geographic_similarity(geoids, scale_km=100.0):
+def geographic_similarity(geoids, scale_km=None):
     """Dense (n, n) similarity from great-circle distance between county
     centroids: 1 / (1 + km / scale_km), so nearer counties score higher, all
-    values are positive, and the diagonal is zero. Used by the "full" kNN
+    values are positive, and the diagonal is zero. scale_km defaults to
+    `geographic_scale_km` in the config. Used by the "full" kNN
     baseline, which picks the geographically nearest known counties whether
     or not they share a border."""
+    scale_km = load_config()["geographic_scale_km"] if scale_km is None else scale_km
     c = load_counties().loc[geoids]
     lat, lon = np.radians(c.latitude.to_numpy(float)), np.radians(c.longitude.to_numpy(float))
     a = (np.sin((lat[:, None] - lat[None, :]) / 2) ** 2

@@ -11,16 +11,20 @@ A node's predicted probability is its normalised score.
 """
 import numpy as np
 
+from ..config import load_config
+
 
 class LabelPropagation:
-    def __init__(self, alpha=0.9, max_iter=1000, tol=1e-6, class_mass_normalization=False):
-        """alpha in (0, 1): how far labels spread (higher = further).
+    def __init__(self, alpha=None, max_iter=None, tol=None, class_mass_normalization=False):
+        """alpha in (0, 1): how far labels spread (higher = further); max_iter and
+        tol are the stopping rule. All default to the lp_* values in the config.
         class_mass_normalization rescales each class's scores to its training
         share, which counters the pull towards the majority class (only ~14%
         of counties are Democratic)."""
-        self.alpha = alpha
-        self.max_iter = max_iter
-        self.tol = tol
+        cfg = load_config()
+        self.alpha = cfg["lp_alpha"] if alpha is None else alpha
+        self.max_iter = cfg["lp_max_iter"] if max_iter is None else max_iter
+        self.tol = cfg["lp_tol"] if tol is None else tol
         self.class_mass_normalization = class_mass_normalization
 
     def fit(self, W, y, train_mask):

@@ -9,7 +9,7 @@ Compare how label propagation and kNN perform when predicting election results i
 - **border graph** (locale): two counties are linked if they share a border;
 - **demographic graph**: two counties are linked if their age and race/ethnicity make-up is similar.
 
-Two models are compared on each graph:
+A third, **combined graph** blends the two. Two models are compared on each graph:
 
 - **kNN**: a county takes the majority (similarity-weighted) vote of the k most similar counties whose result is known.
 - **label propagation**: known results are spread along the graph's edges, so a county is influenced by counties several hops away, not only its direct neighbours.
@@ -23,6 +23,8 @@ python main.py --train-frac 0.1 0.4 max          # vary how many county results 
 python main.py --previous-year                   # also run the previous-year seeding experiment
 ```
 
+Every setting (split sizes, parameter grids, years, defaults for the command line) is in `config/config.yml`; edit it there rather than in the code. Command-line options override the experiment settings for one run.
+
 Only numpy, pandas and PyYAML are needed. Output goes to `results/runs/<date>_<experiment>[_<variant>].csv` (a rerun on the same day overwrites that day's file) and a summary table is printed. `python -m src.graphs.adjacency` and `python -m src.graphs.demographics` rebuild the saved graphs; `python -m src.evaluation.splits` regenerates the example split files.
 
 ## Layout
@@ -31,7 +33,8 @@ Only numpy, pandas and PyYAML are needed. Output goes to `results/runs/<date>_<e
 data/raw/            source files (counties, borders, census, votes)
 data/preprocessed/   saved graphs (.npz), demographic features, example splits
 results/runs/        one CSV per experiment run
-config/config.yml    default values for the graph and kNN settings
+config/config.yml    all tunable settings (see Parameters)
+src/config.py        loads the config
 src/graphs/          border and demographic graph construction, save/load
 src/models/          knn.py, label_propagation.py
 src/evaluation/      labels, splits, cross-validated tuning, metrics, results paths
@@ -46,6 +49,8 @@ main.py              runs the full comparison
 **Border graph.** Built from `Bordering Counties.csv`, which lists each border once, so it is made symmetric. 3,235 counties, 9,297 edges, 21 counties with no neighbours (islands).
 
 **Demographic graph.** Similarity between counties is the cosine similarity of their standardised features. The default graph links each county to its 5 most similar counties (made symmetric, 3,144 counties, 12,353 edges), with the similarity as the edge weight. We chose this over a similarity threshold because a threshold leaves many counties with no edges (at 0.95, about 77% of counties had none) while others get hundreds. A threshold or a hybrid of both (threshold plus a top-k floor) can still be built with `build_demographic_graph(method=...)`, but the comparison uses the k-nearest-neighbours graph.
+
+**Combined graph.** A weighted blend, `lam * border + (1 - lam) * demographic`, so `lam = 0` is the demographic graph and `lam = 1` the border graph. It covers the 3,144 counties in both graphs (the other 91 have no census data and are never in the split). The two sources are on different scales, so before blending each graph's edges are rescaled to an average weighted degree of 1 (so `lam` is the share of a county's total edge weight that comes from borders), and for kNN the cosine similarity and the geographic proximity are each standardised. `lam` is tuned by cross-validation along with the other parameters, from `blend_lambdas` in the config. Counties without borders (islands) still get edges from the demographic part, so no county is isolated. The previous-year experiment does not include the combined graph.
 
 **kNN does not use the graph's edges.** kNN runs on the similarity between *every* pair of counties: cosine similarity of features for the demographic graph, and geographic proximity of county centres for the border graph (the nearest counties, whether or not they border). An earlier version restricted kNN to a county's direct graph neighbours. With only a few counties labelled, most test counties then had no labelled neighbour (at 5% known, about 70% had none), so kNN fell back to the overall average and looked much worse than label propagation for reasons unrelated to the method. That version was removed. Label propagation, by contrast, uses the graph's edges and spreads labels across many hops.
 
@@ -68,37 +73,44 @@ Both models are run on the *same* test counties. The graphs do not have to cover
 
 ## Parameters
 
+All of these live in `config/config.yml` (with comments). Command-line options (`main.py`) override the experiment settings for a single run.
+
 **Command line (`main.py`)**
 
 | option | meaning | default |
 |---|---|---|
-| `--seeds N` | number of random repeats (each redraws the split, known counties and folds) | 10 |
-| `--splits` | `stratified` and/or `block` test-split type | both |
-| `--train-frac F ...` | share of all counties whose labels are known; `max` = every non-test county (0.8) | `max` (with `--previous-year`: 0.05 0.1 0.2 0.4 max) |
+| `--seeds N` | number of random repeats (each redraws the split, known counties and folds) | `seeds` |
+| `--splits` | `stratified` and/or `block` test-split type | `split_strategies` |
+| `--train-frac F ...` | share of all counties whose labels are known; `max` = every non-test county (80%) | `train_fractions` (with `--previous-year`: `previous_year_train_fractions`) |
 | `--previous-year` | also run the previous-year seeding experiment | off |
 
-**Models and what is tuned** (the grids are in `main.py`)
+**Tuned automatically** (the values tried are the `*_grid` entries in the config)
 
-| parameter | model | meaning |
-|---|---|---|
-| `k` | kNN | number of most similar known counties that vote; grid 1, 3, 5, 10, 20, 50 |
-| `weighted` | kNN | votes counted by similarity (true) or equally (false) |
-| `alpha` | label propagation | how far labels spread, between 0 and 1. Low values keep a county close to its own initial label, high values let neighbours' influence travel further. Grid 0.5, 0.8, 0.9, 0.95, 0.99 |
-| `threshold` | both | probability above which a county is called Democratic; grid 0.05 to 0.95 |
-| `class_mass_normalization` | label propagation | option that rescales the scores to the training class shares; off in the comparison |
-
-**Fixed settings**
-
-| setting | where | meaning | value |
+| parameter | model | meaning | config |
 |---|---|---|---|
-| test fraction | `splits.py` | share of counties held out | 0.2 |
-| number of folds | `make_folds` | cross-validation folds | 5 |
-| `block_size` | `block_split` | target size of each test block | 10 counties |
-| `scale_km` | `geographic_similarity` | distance at which proximity halves: similarity is 1 / (1 + km / scale_km); only changes vote weights, not which counties are nearest | 100 |
-| `nearest_neighbors` | `config.yml` | default k if `KNNClassifier` is created without one | 5 |
-| `demographic_graph_k` | `config.yml` | neighbours per county in the demographic graph used by label propagation | 5 |
-| `demographic_similarity` | `config.yml` | similarity threshold; only used by the `threshold` and `hybrid` graph methods | 0.8 |
-| census year, vote years | `demographics.py`, `labels.py` | latest census year in the file; labels from 2024 (2020 for the previous-year experiment) | |
+| `k` | kNN | number of most similar known counties that vote | `knn_k_grid` |
+| `weighted` | kNN | votes counted by similarity (true) or equally (false) | `knn_weighted_grid` |
+| `alpha` | label propagation | how far labels spread, between 0 and 1. Low values keep a county close to its own initial label, high values let neighbours' influence travel further | `lp_alpha_grid` |
+| `lam` | both, combined graph only | share of the border graph in the blend (0 = demographic only, 1 = border only) | `blend_lambdas` |
+| `threshold` | both | probability above which a county is called Democratic | `threshold_grid` (start, stop, step) |
+
+**Fixed settings** (all in `config.yml`)
+
+| setting | meaning | default |
+|---|---|---|
+| `test_fraction` | share of counties held out for testing | 0.2 |
+| `cv_folds` | cross-validation folds used for tuning | 5 |
+| `block_size` | target size of each test block in the block split | 10 counties |
+| `seeds` | random repeats | 10 |
+| `train_fractions`, `previous_year_train_fractions` | share of all counties whose labels are known, for a default run and for the previous-year experiment | `[max]`, `[0.05, 0.1, 0.2, 0.4, max]` |
+| `demographic_graph_k` | neighbours per county in the demographic graph | 5 |
+| `demographic_similarity` | similarity cutoff; only used by the `threshold` and `hybrid` graph methods, not the comparison | 0.8 |
+| `geographic_scale_km` | proximity of two counties = 1 / (1 + km / scale); only changes kNN vote weights, not which counties are nearest | 100 |
+| `nearest_neighbors` | default k if `KNNClassifier` is created without one | 5 |
+| `lp_alpha`, `lp_max_iter`, `lp_tol` | label propagation defaults when no `alpha` is given, and its stopping rule | 0.9, 1000, 1e-6 |
+| `census_year` | Census `YEAR` code for the features (null = latest in the file) | null |
+| `target_year`, `previous_year` | election to predict; election used for the previous-year experiment | 2024, 2020 |
+| `previous_year_knn_k_grid`, `previous_year_lp_alpha_grid` | smaller grids for the previous-year experiment | `[3, 10, 50]`, `[0.5, 0.8, 0.95]` |
 
 ## Results
 

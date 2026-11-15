@@ -20,6 +20,7 @@ from collections import deque
 import numpy as np
 import pandas as pd
 
+from ..config import load_config
 from ..graphs.adjacency import get_adjacency_graph, load_counties
 from ..graphs.demographics import build_features
 from ..graphs.graph_io import PREPROCESSED_DIR
@@ -38,13 +39,14 @@ def eligible_counties(features=None, labels=None):
     return df
 
 
-def stratified_split(df=None, test_frac=0.2, seed=0):
+def stratified_split(df=None, test_frac=None, seed=0):
     """Systematic stratified sample. Counties are sorted by (state, label,
     first principal component of the demographics) and cut into consecutive
     blocks of 1/test_frac; one random county per block becomes a test county.
     Every state, every state's label mix, and the demographic range within each
     are therefore represented in test in the same proportion as in train."""
     df = eligible_counties() if df is None else df
+    test_frac = load_config()["test_fraction"] if test_frac is None else test_frac
     rng = np.random.default_rng(seed)
     block = round(1 / test_frac)
 
@@ -64,11 +66,14 @@ def stratified_split(df=None, test_frac=0.2, seed=0):
     return _as_split(df, test)
 
 
-def block_split(df=None, test_frac=0.2, block_size=10, seed=0):
+def block_split(df=None, test_frac=None, block_size=None, seed=0):
     """Grow contiguous test blocks of ~block_size counties by breadth-first
     search over the border graph from random seed counties, within each state,
     until each state has ~test_frac of its counties in test."""
     df = eligible_counties() if df is None else df
+    cfg = load_config()
+    test_frac = cfg["test_fraction"] if test_frac is None else test_frac
+    block_size = cfg["block_size"] if block_size is None else block_size
     rng = np.random.default_rng(seed)
     geoids, A = get_adjacency_graph()
     pos = {g: i for i, g in enumerate(geoids)}
@@ -123,17 +128,18 @@ def known_mask(train_mask, geoids, df, train_frac=None, seed=0):
 STRATEGIES = {"stratified": stratified_split, "block": block_split}
 
 
-def make_split(strategy, df, seed=0, test_frac=0.2):
+def make_split(strategy, df, seed=0, test_frac=None):
     """Fresh train/test split ('stratified' or 'block'). 'train' is the pool of
     counties whose labels may be used (training + validation)."""
     return STRATEGIES[strategy](df, test_frac=test_frac, seed=seed)
 
 
-def make_folds(strategy, df, k=5, seed=0):
+def make_folds(strategy, df, k=None, seed=0):
     """Assign the counties in df to k cross-validation folds (Series of 0..k-1)
     using the same strategy as the test split: stratified folds each mirror the
     pool's state / party / demographic mix; block folds are contiguous regions."""
     fn = STRATEGIES[strategy]
+    k = load_config()["cv_folds"] if k is None else k
     fold = pd.Series(k - 1, index=df.index, name="fold")
     remaining = df
     for i in range(k - 1):

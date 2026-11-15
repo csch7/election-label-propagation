@@ -16,18 +16,23 @@ import itertools
 import numpy as np
 import pandas as pd
 
+from ..config import load_config
 from .metrics import balanced_accuracy, report
 
-THRESHOLDS = np.round(np.arange(0.05, 0.96, 0.05), 2)
+
+def default_thresholds():
+    g = load_config()["threshold_grid"]
+    return np.round(np.arange(g["start"], g["stop"] + g["step"] / 2, g["step"]), 4)
 
 
-def tune(model_cls, W, y, folds, param_grid, thresholds=THRESHOLDS, metric=balanced_accuracy, y_eval=None):
+def tune(model_cls, W, y, folds, param_grid, thresholds=None, metric=balanced_accuracy, y_eval=None):
     """Cross-validated grid search over param_grid (dict name -> list of values)
     and the decision threshold. folds: int array over nodes, fold id 0..k-1 for
     known counties and -1 elsewhere. Returns (best, results): best is a dict of
     params plus 'threshold' and 'score'; results is every combination as a
     DataFrame sorted best-first. y_eval: labels to score against when they
     differ from the labels the model is fitted on (default: y)."""
+    thresholds = default_thresholds() if thresholds is None else thresholds
     folds = np.asarray(folds)
     known = folds >= 0
     held_idx = np.concatenate([np.flatnonzero(folds == f) for f in range(folds.max() + 1)])
