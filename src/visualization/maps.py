@@ -5,7 +5,6 @@ from pathlib import Path
 from urllib.request import urlopen
 
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.lines import Line2D
@@ -105,29 +104,6 @@ def _legend(fig, entries, y=0.02, ncol=None):
     fig.legend(handles=handles, loc="lower center", ncol=ncol or len(entries), bbox_to_anchor=(0.5, y), fontsize=10.5)
 
 
-def splits_map(canvas, repro, out, seed=0):
-    """Where the training and test counties are, for each split type."""
-    fig, axes = plt.subplots(1, 2, figsize=(15, 6.2))
-    size = 7 if canvas.atlas is None else None
-    for ax, strategy in zip(axes, ("stratified", "block")):
-        split = repro.split(strategy, seed)
-        winner = repro.df.label
-        colors = {}
-        for g, s in split.items():
-            dem = winner[g] == 1
-            colors[g] = (st.DEM if dem else st.REP) if s == "test" else (st.PALE_DEM if dem else st.PALE_REP)
-        canvas.draw(ax, colors, size=size)
-        n_test = int((split == "test").sum())
-        ax.set_title(f"{st.SPLIT_LABEL[strategy]}: {n_test} test counties", loc="left")
-    fig.subplots_adjust(top=0.78, bottom=0.14, left=0.01, right=0.99, wspace=0.02)
-    _legend(fig, [("Democratic, test", st.DEM), ("Republican, test", st.REP),
-                  ("Democratic, known (train)", st.PALE_DEM), ("Republican, known (train)", st.PALE_REP),
-                  ("No data", st.BLANK)])
-    st.headline(fig, "Which counties are held out?", "2024 winner by county; bold colours are the counties we try to predict (seed 0)")
-    fig.savefig(out, dpi=200)
-    plt.close(fig)
-
-
 def errors_grid(canvas, repro, comp, out, split="stratified", seed=0, frac="max"):
     """Right and wrong calls on the test counties for every model and graph."""
     cats = {"ok": ("Correct", st.NEUTRAL), "miss": ("Democratic county called Republican", st.DEM),
@@ -146,45 +122,5 @@ def errors_grid(canvas, repro, comp, out, split="stratified", seed=0, frac="max"
     fig.subplots_adjust(top=0.84, bottom=0.08, left=0.01, right=0.99, wspace=0.02, hspace=0.12)
     _legend(fig, [(l, c) for l, c in cats.values()] + [("Not in test set", st.BLANK)])
     st.headline(fig, "Where does each model go wrong?", f"{st.SPLIT_LABEL[split]}, seed {seed}, all training labels known; test counties only")
-    fig.savefig(out, dpi=200)
-    plt.close(fig)
-
-
-def agreement_map(canvas, repro, comp, out, split="stratified", seed=0, frac="max"):
-    """Border graph against demographic graph: which one gets each county right."""
-    colors = {"Demographics only": "#087d72", "Borders only": "#d2742d", "Both correct": "#9fb1bb", "Both wrong": "#674385"}
-    fig, axes = plt.subplots(1, 2, figsize=(15, 6.4))
-    size = 7 if canvas.atlas is None else None
-    for ax, model in zip(axes, st.MODELS):
-        ok = {g: repro.run(pick_run(comp, g, model, split, seed, frac)).eval("actual == pred") for g in ("border", "demographic")}
-        demo = ok["demographic"]
-        border = ok["border"].reindex(demo.index)
-        label = np.select([demo & ~border, border & ~demo, demo & border], list(colors)[:3], "Both wrong")
-        canvas.draw(ax, {g: colors[l] for g, l in zip(demo.index, label)}, size=size)
-        counts = pd.Series(label).value_counts()
-        ax.set_title(st.MODEL_LABEL[model], loc="left")
-        ax.text(0.02, 0.02, "   ".join(f"{k} {counts.get(k, 0)}" for k in colors), transform=ax.transAxes, fontsize=9.5, color=st.MUTED)
-    fig.subplots_adjust(top=0.78, bottom=0.14, left=0.01, right=0.99, wspace=0.02)
-    _legend(fig, list(colors.items()) + [("Not in test set", st.BLANK)])
-    st.headline(fig, "Borders or demographics?", "Which graph predicted each test county's 2024 winner correctly (same test counties for both)")
-    fig.savefig(out, dpi=200)
-    plt.close(fig)
-
-
-def probability_map(canvas, repro, comp, out, graph="combined", model="label_propagation", split="stratified", seed=0, frac="max"):
-    """Actual winners next to the model's predicted probability of a Democratic win."""
-    res = repro.run(pick_run(comp, graph, model, split, seed, frac))
-    fig, axes = plt.subplots(1, 2, figsize=(15, 6.4))
-    size = 7 if canvas.atlas is None else None
-    canvas.draw(axes[0], {g: st.DEM if a else st.REP for g, a in res.actual.items()}, size=size)
-    axes[0].set_title("Actual 2024 winner", loc="left")
-    cmap = plt.get_cmap("RdBu")  # 0 = red, 1 = blue
-    shade = res.proba.clip(0, 1) ** 0.5  # square root stretches the low end: most counties have a small probability
-    canvas.draw(axes[1], {g: cmap(v) for g, v in shade.items()}, size=size)
-    axes[1].set_title("Predicted chance of a Democratic win", loc="left")
-    axes[1].text(0.02, 0.02, f"{st.MODEL_LABEL[model]} on the {graph} graph", transform=axes[1].transAxes, fontsize=9.5, color=st.MUTED)
-    fig.subplots_adjust(top=0.78, bottom=0.14, left=0.01, right=0.99, wspace=0.02)
-    _legend(fig, [("Democratic", st.DEM), ("Republican", st.REP), ("Not in test set", st.BLANK)])
-    st.headline(fig, "Predicted vs actual", f"Test counties only ({st.SPLIT_LABEL[split]}, seed {seed}); red = unlikely Democratic, blue = likely, white = about 25% (square-root scale)")
     fig.savefig(out, dpi=200)
     plt.close(fig)

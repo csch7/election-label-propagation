@@ -17,7 +17,8 @@ blend_lambdas: [0.25, 0.5, 0.75]  # combined graph: share of border (vs demograp
 test_fraction: 0.2       # share of counties held out for testing
 cv_folds: 5              # cross-validation folds used for tuning
 block_size: 10           # target size of each test block in the block split
-split_strategies: [stratified, block]
+split_strategies: [block]   # test-split types run by main.py (also available: stratified)
+report_split: block      # split shown in the figures
 
 # ---- Experiments (main.py) ----------------------------------------------------
 seeds: 10                # random repeats; each redraws the split, known counties and folds

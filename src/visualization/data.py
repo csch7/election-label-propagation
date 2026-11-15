@@ -28,9 +28,3 @@ def load_comparison():
     for col in ("k", "weighted", "alpha", "lam", "threshold"):
         df[col] = params.map(lambda p: p.get(col, np.nan))
     return df
-
-
-def load_previous_year(split):
-    df = pd.read_csv(latest_run("previous_year", split))
-    df["train_frac"] = df.train_frac.astype(str)
-    return df
