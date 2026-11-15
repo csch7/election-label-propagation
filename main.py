@@ -67,7 +67,7 @@ def run_comparison(splits, seeds, fracs=(None,)):
                             "train_frac": "max" if frac is None else frac,
                             "n_known": int(known.sum()), "n_test": len(ti)}
                     rows.append({**base, "model": "majority", "params": "",
-                                 **report(y[ti].astype(int), np.zeros(len(ti), dtype=int))})
+                                 **report(y[ti].astype(int), np.zeros(len(ti), dtype=int), np.zeros(len(ti)))})
                     for mname, (cls, grid, source) in MODELS.items():
                         M = W if source == "graph" else S_full
                         best, _ = tune(cls, M, y, folds, grid)
@@ -79,18 +79,24 @@ def run_comparison(splits, seeds, fracs=(None,)):
     return pd.DataFrame(rows)
 
 
+METRIC_COLUMNS = [("balanced_accuracy", "bal. acc"), ("accuracy", "accuracy"), ("precision", "precision"),
+                  ("recall", "recall"), ("f1_democratic", "F1"), ("auc", "AUC")]
+
+
 def summarise(runs):
-    metrics = ["accuracy", "balanced_accuracy", "f1_democratic"]
+    """Print mean +- std over seeds. Precision, recall, F1 and accuracy use the
+    tuned decision threshold; AUC is threshold-free. Democratic is positive."""
+    metrics = [m for m, _ in METRIC_COLUMNS]
     agg = runs.groupby(["split", "train_frac", "graph", "model"], sort=False)[metrics].agg(["mean", "std"])
     n_known = runs.groupby(["split", "train_frac"], sort=False).n_known.mean()
     for (split_name, frac), g in agg.groupby(level=["split", "train_frac"], sort=False):
         share = "the whole train pool" if frac == "max" else f"{float(frac):.0%} of all counties"
         print(f"\n== {split_name} split, {share} known (~{n_known[(split_name, frac)]:.0f} counties), "
               f"{runs.seed.nunique()} seeds (mean +- std over seeds)")
-        print(f"{'graph':12s} {'model':18s} {'bal. acc':>15s} {'accuracy':>15s} {'F1 (Dem)':>15s}")
+        print(f"{'graph':12s} {'model':18s}" + "".join(f"{name:>15s}" for _, name in METRIC_COLUMNS))
         for (_, _, graph, model), r in g.iterrows():
-            cell = lambda m: f"{r[(m, 'mean')]:.3f} +- {r[(m, 'std')]:.3f}"
-            print(f"{graph:12s} {model:18s} {cell('balanced_accuracy'):>15s} {cell('accuracy'):>15s} {cell('f1_democratic'):>15s}")
+            cells = "".join(f"{r[(m, 'mean')]:>8.3f}+-{r[(m, 'std')]:.2f}" for m in metrics)
+            print(f"{graph:12s} {model:18s}{cells}")
 
 
 if __name__ == "__main__":
