@@ -117,8 +117,8 @@ def errors_grid(canvas, repro, comp, out, split="stratified", seed=0, frac="max"
             kind = np.where(res.actual == res.pred, "ok", np.where(res.actual == 1, "miss", "false"))
             canvas.draw(ax, {g: cats[k][1] for g, k in zip(res.index, kind)}, size=size)
             ax.set_title(f"{st.MODEL_LABEL[model]} · {st.GRAPH_LABEL[graph].replace(' graph', '')}", loc="left", fontsize=12)
-            ax.text(0.02, 0.04, f"{(kind == 'ok').mean():.0%} correct\n{(kind == 'miss').sum()} missed · {(kind == 'false').sum()} false",
-                    transform=ax.transAxes, fontsize=9.5, color=st.MUTED)
+            ax.text(1.0, 1.0, f"{(kind == 'ok').mean():.0%} correct · {(kind == 'miss').sum()} missed · {(kind == 'false').sum()} false",
+                    transform=ax.transAxes, ha="right", va="bottom", fontsize=9.5, color=st.MUTED)
     fig.subplots_adjust(top=0.84, bottom=0.08, left=0.01, right=0.99, wspace=0.02, hspace=0.12)
     _legend(fig, [(l, c) for l, c in cats.values()] + [("Not in test set", st.BLANK)])
     st.headline(fig, "Where does each model go wrong?", f"{st.SPLIT_LABEL[split]}, seed {seed}, all training labels known; test counties only")
