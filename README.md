@@ -73,11 +73,11 @@ Both models are run on the *same* test counties. The graphs do not have to cover
 
 **Training size.** `--train-frac` is the share of *all* eligible counties whose labels are known (at most 0.8). Smaller values subsample the training pool, state-stratified. `max` uses the whole pool. The scored counties are the 20% test set *plus every training-pool county whose label is not known*. At `max` that is just the test set (621 counties); at 5% known it is about 2,950 counties, so the small training sizes are scored on far more counties and are less noisy. Those extra counties' labels are never used for fitting or tuning, so this does not leak. The scored counties therefore differ a little between training sizes (the test set is always included).
 
-**Tuning by cross-validation.** There is no separate validation set. The known counties are split into 5 folds with the same method as the test split (stratified or block). For each parameter setting, every fold is predicted from the other four, and the best parameters and decision threshold are chosen on the pooled out-of-fold predictions. The final model is then fitted with all known counties and scored once on the test set. (It has 5/5 of the known labels rather than the 4/5 used inside each fold, the usual cross-validation convention.) The test set is never used for tuning.
+**Tuning by cross-validation.** There is no separate validation set. The known counties are split into 5 folds with the same method as the test split (stratified or block). For each parameter setting, every fold is predicted from the other four, and the best parameters are chosen on the pooled out-of-fold predictions. The final model is then fitted with all known counties and scored once on the test set. (It has 5/5 of the known labels rather than the 4/5 used inside each fold, the usual cross-validation convention.) The test set is never used for tuning.
 
-**Decision threshold.** Only about 14% of counties are Democratic, so a 0.5 cutoff rarely predicts Democratic. The threshold is tuned along with the other parameters, to maximise balanced accuracy.
+**Decision threshold.** Only about 14% of counties are Democratic, so a 0.5 cutoff rarely predicts Democratic. A county is called Democratic when its predicted probability exceeds the share of Democratic counties among the *known* counties (about 0.14). For well-calibrated probabilities this is the best rule for balanced accuracy, because that metric weights each Democratic county about six times as much as a Republican one. We first tuned the threshold by cross-validation, but with only a handful of known Democratic counties the choice was noisy and often extreme (the lowest value tried), which cost up to 6 points of balanced accuracy at 5% known. The fixed prior threshold was within about half a point of the best possible threshold at 5% known and about 1.5 points below it at full size, and it removes a tuned parameter.
 
-**Metrics.** Democratic is the positive class. We report balanced accuracy (the average recall over the two classes; the main number, since guessing Republican everywhere scores about 0.86 accuracy but only 0.5 balanced accuracy), accuracy, precision, recall, F1 and AUC. AUC is computed from the predicted probabilities and does not depend on the threshold; the others use the tuned threshold. Each experiment is repeated over several random seeds (default 10). Each seed redraws the test split, the known counties and the folds, and results are reported as mean and standard deviation over seeds. An "always Republican" baseline row is included.
+**Metrics.** Democratic is the positive class. We report balanced accuracy (the average recall over the two classes; the main number, since guessing Republican everywhere scores about 0.86 accuracy but only 0.5 balanced accuracy), accuracy, precision, recall, F1 and AUC. AUC is computed from the predicted probabilities and does not depend on the threshold; the others use the prior threshold. Each experiment is repeated over several random seeds (default 10). Each seed redraws the test split, the known counties and the folds, and results are reported as mean and standard deviation over seeds. An "always Republican" baseline row is included.
 
 **Previous-year experiment** (`--previous-year`, optional and not part of the reported results). Instead of knowing the 2024 result for the known counties, we only know their 2020 result. Those 2020 labels seed the models, which predict 2024 for the test counties. For reference, "persistence" (each test county's own 2020 result) scores about 0.98 balanced accuracy, far above any graph model, so the graph methods are only useful when a county's own history is unavailable.
 
@@ -102,7 +102,6 @@ All of these live in `config/config.yml` (with comments). Command-line options (
 | `weighted` | kNN | votes counted by similarity (true) or equally (false) | `knn_weighted_grid` |
 | `alpha` | label propagation | how far labels spread, between 0 and 1. Low values keep a county close to its own initial label, high values let neighbours' influence travel further | `lp_alpha_grid` |
 | `lam` | both, combined graph only | share of the border graph in the blend (0 = demographic only, 1 = border only) | `blend_lambdas` |
-| `threshold` | both | probability above which a county is called Democratic | `threshold_grid` (start, stop, step) |
 
 **Fixed settings** (all in `config.yml`)
 
@@ -125,22 +124,22 @@ All of these live in `config/config.yml` (with comments). Command-line options (
 
 ## Results
 
-Block split. Balanced accuracy on the scored counties (the test set plus unknown training-pool counties), mean over 10 seeds, by the share of all counties whose labels are known (`results/runs/2026-11-15_model_comparison.csv` has every metric and the per-seed numbers; standard deviations are about 0.01 to 0.03, except label propagation on the border graph at 5%, about 0.07).
+Block split. Balanced accuracy on the scored counties (the test set plus unknown training-pool counties), mean over 10 seeds, by the share of all counties whose labels are known (`results/runs/2026-11-16_model_comparison.csv` has every metric and the per-seed numbers; standard deviations are about 0.01 to 0.03).
 
 | graph | model | 5% | 10% | 20% | 40% | 80% (max) |
 |---|---|---|---|---|---|---|
-| border | kNN | 0.650 | 0.697 | 0.728 | 0.744 | 0.751 |
-| border | label propagation | 0.627 | 0.693 | 0.716 | 0.740 | 0.728 |
-| demographic | kNN | 0.774 | 0.781 | 0.805 | 0.829 | 0.842 |
-| demographic | label propagation | 0.751 | 0.786 | 0.818 | 0.835 | 0.839 |
-| combined | kNN | 0.766 | 0.790 | 0.831 | 0.843 | 0.854 |
-| combined | label propagation | 0.747 | 0.784 | 0.815 | 0.841 | 0.855 |
+| border | kNN | 0.664 | 0.694 | 0.728 | 0.750 | 0.743 |
+| border | label propagation | 0.668 | 0.712 | 0.729 | 0.736 | 0.741 |
+| demographic | kNN | 0.776 | 0.780 | 0.807 | 0.814 | 0.834 |
+| demographic | label propagation | 0.773 | 0.793 | 0.817 | 0.830 | 0.839 |
+| combined | kNN | 0.797 | 0.792 | 0.830 | 0.839 | 0.847 |
+| combined | label propagation | 0.761 | 0.788 | 0.815 | 0.837 | 0.842 |
 
-- The demographic graph beats the border graph by about 10 points at every training size.
-- The combined graph is ahead of the demographic graph by about 1 to 3 points from 20% known upward, which is around the seed-to-seed spread, so it is suggestive rather than conclusive. At 5% known the demographic graph is ahead. Cross-validation chose the smallest border share we tried (`lam = 0.25`) in most runs, so borders add little on top of demographics. A smaller `lam` was not tried.
-- kNN and label propagation are close everywhere, within the seed-to-seed spread, so we do not claim a winner. AUC tells the same story. With few known counties (5%), kNN is ahead of label propagation on every graph, by 2 to 3 points.
+- The demographic graph beats the border graph by about 9 to 11 points at every training size.
+- For kNN the combined graph is ahead of the demographic graph by about 1 to 2.5 points at every size, which is around the seed-to-seed spread. For label propagation it is no better than the demographic graph alone. Cross-validation chose the smallest border share we tried (`lam = 0.25`) in 84% of runs, so borders add little on top of demographics. A smaller `lam` was not tried.
+- kNN and label propagation are close almost everywhere, within the seed-to-seed spread, so we do not claim a winner. The one clear gap is the combined graph at 5% known, where kNN is ahead by about 3.5 points. AUC tells the same story.
 - More known counties help both models, with most of the gain by 20% to 40%.
-- The results from the previous-year experiment (`--previous-year`) were produced before this change to which counties are scored, so they are not comparable.
+- The results from the previous-year experiment (`--previous-year`) were produced before the changes to which counties are scored and to the decision threshold, so they are not comparable.
 - For reference, always guessing Republican scores 0.5 balanced accuracy (0.86 accuracy).
 
 ## Figures
@@ -159,5 +158,5 @@ The map refits the runs for one seed (default 0, `--seed` to change); every refi
 ## Notes and limitations
 
 - The block split is the harder test: its test counties are in regions with few labelled neighbours, which removes the advantage a random split gives the border graph (neighbouring counties tend to vote alike). We report only this split; the stratified split gives higher scores, especially for the border graph.
-- Selecting the threshold and parameters on a validation set of only about 70 Democratic counties is noisy; the cross-validation and the repeats over seeds are there to reduce that. Differences of one or two points between models are within the seed-to-seed spread.
+- With few known counties there are few known Democratic counties (about 20 at 5% known), so tuning is noisy; the repeats over seeds are there to reduce that. Differences of one or two points between models are within the seed-to-seed spread.
 - Both graphs and the split use only features and borders, not votes, except that the stratified split and the folds use the labels to balance parties.

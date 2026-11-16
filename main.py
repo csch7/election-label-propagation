@@ -11,7 +11,8 @@ For every (split strategy, random seed, graph, model):
      known, i.e. the unused part of the training pool, are scored too),
   2. choose the known (training) counties: --train-frac of ALL counties, sampled
      from the remaining 80% (default: all of them),
-  3. tune the model's parameters and decision threshold by 5-fold cross-validation
+  3. tune the model's parameters by 5-fold cross-validation (the decision threshold is
+     the share of Democratic counties among the known counties, not tuned)
      among the known counties,
   4. fit with all known counties' labels and score once on the test counties.
 kNN uses all counties' similarity (demographic) or geographic distance (border);
@@ -121,7 +122,7 @@ METRIC_COLUMNS = [("balanced_accuracy", "bal. acc"), ("accuracy", "accuracy"), (
 
 def summarise(runs):
     """Print mean +- std over seeds. Precision, recall, F1 and accuracy use the
-    tuned decision threshold; AUC is threshold-free. Democratic is positive."""
+    prior threshold (share of Democratic counties among the known); AUC is threshold-free. Democratic is positive."""
     metrics = [m for m, _ in METRIC_COLUMNS]
     agg = runs.groupby(["split", "train_frac", "graph", "model"], sort=False)[metrics].agg(["mean", "std"])
     n_known = runs.groupby(["split", "train_frac"], sort=False).n_known.mean()
