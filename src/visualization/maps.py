@@ -106,7 +106,7 @@ def _legend(fig, entries, y=0.02, ncol=None):
 
 def errors_grid(canvas, repro, comp, out, split="stratified", seed=0, frac="max"):
     """Right and wrong calls on the test counties for every model and graph."""
-    cats = {"ok": ("Correct", st.NEUTRAL), "miss": ("Democratic county called Republican", st.DEM),
+    cats = {"ok": ("Called correctly", st.CORRECT), "miss": ("Democratic county called Republican", st.DEM),
             "false": ("Republican county called Democratic", st.REP)}
     fig, axes = plt.subplots(2, 3, figsize=(17, 9.4))
     size = 5 if canvas.atlas is None else None
@@ -116,13 +116,15 @@ def errors_grid(canvas, repro, comp, out, split="stratified", seed=0, frac="max"
             row = pick_run(comp, graph, model, split, seed, frac)
             res = repro.run(row)
             kind = np.where(res.actual == res.pred, "ok", np.where(res.actual == 1, "miss", "false"))
-            canvas.draw(ax, {g: cats[k][1] for g, k in zip(res.index, kind)}, size=size)
+            colors = {g: st.KNOWN for g in res.attrs["known"]}
+            colors.update({g: cats[k][1] for g, k in zip(res.index, kind)})
+            canvas.draw(ax, colors, size=size)
             ax.set_title(f"{st.MODEL_LABEL[model]} · {st.GRAPH_LABEL[graph].replace(' graph', '')}", loc="left", fontsize=12)
             ax.text(1.0, 1.0, f"{(kind == 'ok').mean():.0%} correct · {(kind == 'miss').sum()} missed · {(kind == 'false').sum()} false",
                     transform=ax.transAxes, ha="right", va="bottom", fontsize=9.5, color=st.MUTED)
     fig.subplots_adjust(top=0.84, bottom=0.08, left=0.01, right=0.99, wspace=0.02, hspace=0.12)
-    _legend(fig, [(l, c) for l, c in cats.values()] + [("Label known / no data", st.BLANK)])
+    _legend(fig, [("Label known (training)", st.KNOWN)] + [(l, c) for l, c in cats.values()] + [("No data", st.BLANK)])
     st.headline(fig, "Where does each model go wrong?",
-                f"{st.SPLIT_LABEL[split]}, seed {seed}; labels known for {row.known_share:.0%} of counties; scored counties only (the test set plus counties whose label is not known)")
+                f"{st.SPLIT_LABEL[split]}, seed {seed}; labels known for {row.known_share:.0%} of counties; yellow = label known; the other counties are scored (the test set plus counties whose label is not known)")
     fig.savefig(out, dpi=200)
     plt.close(fig)

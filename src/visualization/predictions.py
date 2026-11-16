@@ -38,7 +38,9 @@ class Reproducer:
         pred = (proba > threshold).astype(int)
         saved = row.balanced_accuracy
         assert abs(balanced_accuracy(actual, pred) - saved) < 1e-6, "reproduced run does not match the saved metrics"
-        return pd.DataFrame({"actual": actual, "proba": proba, "pred": pred}, index=np.asarray(geoids)[test])
+        out = pd.DataFrame({"actual": actual, "proba": proba, "pred": pred}, index=np.asarray(geoids)[test])
+        out.attrs["known"] = list(np.asarray(geoids)[known])  # counties whose labels were known
+        return out
 
 
 def pick_run(comp, graph, model, split="stratified", seed=0, frac="max"):

@@ -20,6 +20,8 @@ DEM, REP = "#2c6fbb", "#c4473f"
 PALE_DEM, PALE_REP = "#bdd2ea", "#ecc3bf"
 NEUTRAL = "#c9d3d8"
 BLANK = "#f0f2f3"
+CORRECT = "#8fcfa6"   # scored county called correctly
+KNOWN = "#e5c76b"     # county whose label is known (training)
 
 
 def apply_style():
