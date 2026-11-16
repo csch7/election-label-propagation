@@ -106,8 +106,7 @@ def _legend(fig, entries, y=0.02, ncol=None):
 
 def errors_grid(canvas, repro, comp, out, split="stratified", seed=0, frac="max"):
     """Right and wrong calls on the test counties for every model and graph."""
-    cats = {"ok": ("Called correctly", st.CORRECT), "miss": ("Democratic county called Republican", st.DEM),
-            "false": ("Republican county called Democratic", st.REP)}
+    cats = {"ok": ("Correct", st.CORRECT), "miss": ("Dem. called Rep.", st.DEM), "false": ("Rep. called Dem.", st.REP)}
     fig, axes = plt.subplots(2, 3, figsize=(17, 9.4))
     size = 5 if canvas.atlas is None else None
     for r, model in enumerate(st.MODELS):
@@ -120,11 +119,10 @@ def errors_grid(canvas, repro, comp, out, split="stratified", seed=0, frac="max"
             colors.update({g: cats[k][1] for g, k in zip(res.index, kind)})
             canvas.draw(ax, colors, size=size)
             ax.set_title(f"{st.MODEL_LABEL[model]} · {st.GRAPH_LABEL[graph].replace(' graph', '')}", loc="left", fontsize=12)
-            ax.text(1.0, 1.0, f"{(kind == 'ok').mean():.0%} correct · {(kind == 'miss').sum()} missed · {(kind == 'false').sum()} false",
-                    transform=ax.transAxes, ha="right", va="bottom", fontsize=9.5, color=st.MUTED)
+            ax.text(1.0, 1.0, f"{(kind == 'ok').mean():.0%} correct", transform=ax.transAxes, ha="right",
+                    va="bottom", fontsize=10.5, color=st.MUTED)
     fig.subplots_adjust(top=0.84, bottom=0.08, left=0.01, right=0.99, wspace=0.02, hspace=0.12)
-    _legend(fig, [("Label known (training)", st.KNOWN)] + [(l, c) for l, c in cats.values()] + [("No data", st.BLANK)])
-    st.headline(fig, "Where does each model go wrong?",
-                f"{st.SPLIT_LABEL[split]}, seed {seed}; labels known for {row.known_share:.0%} of counties; yellow = label known; the other counties are scored (the test set plus counties whose label is not known)")
+    _legend(fig, [("Known", st.KNOWN)] + [(l, c) for l, c in cats.values()] + [("No data", st.BLANK)])
+    st.headline(fig, "Model errors", f"{st.SPLIT_LABEL[split]} · seed {seed} · {row.known_share:.0%} of counties known")
     fig.savefig(out, dpi=200)
     plt.close(fig)

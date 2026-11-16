@@ -24,14 +24,13 @@ def learning_curves(comp, out, split):
                 ax.plot(agg.x * 100, agg.m, color=st.GRAPH_COLOR[graph], lw=2, ms=5, **st.MODEL_STYLE[model])
                 ax.fill_between(agg.x * 100, agg.m - agg.s, agg.m + agg.s, color=st.GRAPH_COLOR[graph], alpha=0.10, lw=0)
         ax.set_title(label, loc="left")
-        ax.set_xlabel("Counties with known labels (% of all counties)")
+        ax.set_xlabel("Known labels (% of counties)")
         ax.set_ylim(*ylim)
     handles = [Line2D([], [], color=st.GRAPH_COLOR[g], lw=3, label=st.GRAPH_LABEL[g]) for g in st.GRAPHS]
     handles += [Line2D([], [], color="#44525c", label=st.MODEL_LABEL[m], **st.MODEL_STYLE[m]) for m in st.MODELS]
     fig.legend(handles=handles, loc="lower center", ncol=5, bbox_to_anchor=(0.5, 0.0))
     fig.subplots_adjust(top=0.76, bottom=0.2, wspace=0.16, left=0.07, right=0.98)
-    st.headline(fig, "More known counties, better predictions",
-                f"{st.SPLIT_LABEL[split]}; performance on the scored counties vs training size; mean and standard deviation over {d.seed.nunique()} random seeds")
+    st.headline(fig, "Accuracy vs known labels", f"{st.SPLIT_LABEL[split]} · mean ± std over {d.seed.nunique()} seeds")
     fig.savefig(out, dpi=200)
     plt.close(fig)
 
@@ -64,7 +63,7 @@ def metrics_heatmap(comp, out, split, frac="max"):
         s.set_visible(False)
     ax.tick_params(length=0)
     fig.subplots_adjust(top=0.8, bottom=0.07, left=0.31, right=0.98)
-    st.headline(fig, "Every metric, every graph and model",
-                f"{st.SPLIT_LABEL[split]}, {d.known_share.mean():.0%} of counties known; Democratic is the positive class; mean ± std over {d.seed.nunique()} seeds")
+    st.headline(fig, "All metrics",
+                f"{st.SPLIT_LABEL[split]} · {d.known_share.mean():.0%} known · mean ± std over {d.seed.nunique()} seeds")
     fig.savefig(out, dpi=200)
     plt.close(fig)
